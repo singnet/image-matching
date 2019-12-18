@@ -17,6 +17,7 @@ def block(in_channels, out_channels,
 class VggBackbone(nn.Module):
     def __init__(self, n_input_channels, activation=nn.ReLU(),
                  batchnorm=True):
+        super().__init__()
         pool = nn.MaxPool2d((2, 2))
         self.net = nn.Sequential(block(n_input_channels, 64, activation=activation),
                                  block(64, 64, activation=activation, batchnorm=batchnorm),
