@@ -231,7 +231,7 @@ def train_super():
     test_batch_size = 20
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    # device = 'cpu'
+    device = 'cpu'
     print('using device {0}'.format(device))
     lr = 0.0005
     epochs = 5
@@ -245,17 +245,19 @@ def train_super():
     # super_file = "./snapshots/super.snap.4.pt"
 
 
-    # state_dict = torch.load(super_file, map_location=device)
+    state_dict = torch.load(super_file, map_location=device)
     torch.autograd.set_detect_anomaly(False)
     sp = GoodPoint(activation=torch.nn.ReLU(), grid_size=8,
                batchnorm=True).to(device)
     # detector_layer_names = ('convPa', 'convPb', 'batchnormPa', 'batchnormPb')
     print("loading weights from {0}".format(super_file))
+    state_dict['superpoint'].pop('convPb.weight')
+    state_dict['superpoint'].pop('convPb.bias')
     # to_pop = [k for k in state_dict['superpoint'] if k.startswith(detector_layer_names)]
     # print("reset: {0}".format(to_pop))
     # for p in to_pop:
     #    state_dict['superpoint'].pop(p)
-    # sp.load_state_dict(state_dict['superpoint'], strict=False)
+    sp.load_state_dict(state_dict['superpoint'], strict=False)
     print("loading optimizer")
     optimizer = optim.RMSprop(sp.parameters(), lr=lr, weight_decay=weight_decay)
     # state_dict['optimizer']['param_groups'][0]['lr'] = lr

@@ -1,4 +1,5 @@
 from fem.util import numpy_nonzero
+import sklearn.neighbors
 
 import torch
 
@@ -393,7 +394,6 @@ def compute_loss_hom_det(heatmap1, heatmap2, batch, point_mask1,
     result = process(loss_hom(**args), )
     det_diff = compute_det_diff(H, H_inv, heatmap1, heatmap2, mask2.squeeze())
     result['det_diff'] = det_diff.mean()
-    result['self-sim-loss'] = self_sim_loss
     result['loss'] = result['loss'] + result['det_diff']
     return result
 

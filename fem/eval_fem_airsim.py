@@ -11,7 +11,7 @@ import time
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from airsim_dataset import AirsimIntVarDataset
-from fem.super_point import SuperPoint, get_superpoint_model
+from fem.goodpoint import GoodPoint
 import torch
 from fem.nonmaximum import PoolingNms, MagicNMS
 from fem import util
@@ -31,8 +31,8 @@ magicleap_file = None
 
 PATH_WEIGHTS = None
 
-PATH_WEIGHTS = "snapshots/super.snap.4.pt"
 PATH_WEIGHTS = "./super4100.pt"
+PATH_WEIGHTS = "snapshots/super.snap.4.pt"
 
 
 
@@ -116,8 +116,10 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("using device {0}".format(device))
 
 
-sp = SuperPoint(torch.nn.ReLU(),
+sp = GoodPoint(dustbin=1,
+               activation=torch.nn.ReLU(),
                 batchnorm=batchnorm,
+                grid_size=8,
                 nms=nms).eval()
 
 sp.load_state_dict(torch.load(PATH_WEIGHTS, map_location=device)['superpoint'])
@@ -126,13 +128,13 @@ sp.load_state_dict(torch.load(PATH_WEIGHTS, map_location=device)['superpoint'])
 #                 batchnorm=False,
 #                 nms=nms).eval()
 
-sp_magic = SuperPoint(torch.nn.ReLU(),
-                batchnorm=True,
-                nms=nms).eval()
-sp_magic = sp_magic.to(device)
-
-
-sp_magic.load_state_dict(torch.load("snapshots/super12000.pt", map_location=device)['superpoint'])
+#sp_magic = SuperPoint(torch.nn.ReLU(),
+#                batchnorm=True,
+#                nms=nms).eval()
+#sp_magic = sp_magic.to(device)
+#
+#
+#sp_magic.load_state_dict(torch.load("snapshots/super12000.pt", map_location=device)['superpoint'])
 sp_magic = None
 
 sp.isTraining = False
@@ -307,7 +309,7 @@ def loop(draw=True):
 
             t1 = time.time()
 
-            pts_1, desc_1_ = fe.points_desc(torch.from_numpy(timg1).to(device), threshold=conf_thresh, dustbin=False)
+            pts_1, desc_1_ = fe.points_desc(torch.from_numpy(timg1).to(device), threshold=conf_thresh)
 
             if sp_magic:
                 heatmap, desc_crude = sp_magic.forward(torch.from_numpy(timg1).to(device) / 255.0)
