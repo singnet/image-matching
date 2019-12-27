@@ -56,8 +56,8 @@ class GoodPoint(nn.Module):
             self.batchnorm6 = nn.BatchNorm2d(128)
             self.batchnorm7 = nn.BatchNorm2d(128)
             self.batchnormPa = nn.BatchNorm2d(256)
-            self.batchnormPb = nn.BatchNorm2d(65)
-            self.bnDa = nn.BatchNorm2d(256)
+            self.batchnormPb = nn.BatchNorm2d(64 + dustbin)
+            self.batchnormDa = nn.BatchNorm2d(256)
         else:
             l = lambda x: x
             self.batchnorm0 = l
@@ -68,10 +68,8 @@ class GoodPoint(nn.Module):
             self.batchnorm5 = l
             self.batchnorm6 = l
             self.batchnorm7 = l
-            self.batchnormPa = l
             self.batchnormDa = l
             self.batchnormPa = l
-            self.batchnormDa = l
         self.depth_to_space = DepthToSpace(grid_size)
         self.nms = nms
         init_weights(self)
@@ -83,7 +81,7 @@ class GoodPoint(nn.Module):
         return x
 
     def descriptor_head(self, x):
-        x = self.bnDa(self.activation(self.convDa(x)))
+        x = self.batchnormDa(self.activation(self.convDa(x)))
         desc = self.convDb(x)
         dn = torch.norm(desc, p=2, dim=1)  # Compute the norm.
         desc = desc.div(torch.unsqueeze(dn, 1))  # Divide by norm to normalize.
