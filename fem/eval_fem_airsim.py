@@ -31,10 +31,8 @@ magicleap_file = None
 
 PATH_WEIGHTS = None
 
-PATH_WEIGHTS = "./super4100.pt"
-PATH_WEIGHTS = "snapshots/super.snap.4.pt"
-
-
+PATH_WEIGHTS = "./super12000.pt"
+PATH_WEIGHTS = "snapshots/super16000.pt"
 
 
 #PATH_WEIGHTS = "./snapshots/TWD/tr_0.5_dr_0.4/from_scratch_super17.pt"
@@ -116,13 +114,12 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("using device {0}".format(device))
 
 
-sp = GoodPoint(dustbin=1,
+sp = GoodPoint(dustbin=0,
                activation=torch.nn.ReLU(),
                 batchnorm=batchnorm,
                 grid_size=8,
                 nms=nms).eval()
 
-sp.load_state_dict(torch.load(PATH_WEIGHTS, map_location=device)['superpoint'])
 
 # sp_magic = get_superpoint_model(magicleap_file="superpoint_magicleap/superpoint_v1.pth",
 #                 batchnorm=False,
@@ -140,7 +137,6 @@ sp_magic = None
 sp.isTraining = False
 sp.isDropout = False
 
-fe = sp.to(device)
 
 
 
@@ -282,7 +278,10 @@ def geom_match_to_vm(geom_dist, ind2):
     return matches, len(matches)
 
 
-def loop(draw=True):
+def loop(draw=True, weights=PATH_WEIGHTS, print_res=True):
+    sp.load_state_dict(torch.load(weights, map_location=device)['superpoint'])
+
+    fe = sp.to(device)
     nCases = 0
     meanTime = 0
     meanRecall = 0.
@@ -376,16 +375,18 @@ def loop(draw=True):
                 if draw:
                     draw_matches(matches, pts_1, pts_2, img_output[IMG_SIZE[0]:, :, :])
                 precinv = 1 - float(ms.nMatches) / float(nMatches)
-                print("%i/%i\trecall: %f\tnMatches: %i\tTime: %f" % (nCases, N, ms.recall, ms.nMatches, t2 - t1))
+                if print_res:
+                    print("%i/%i\trecall: %f\tnMatches: %i\tTime: %f" % (nCases, N, ms.recall, ms.nMatches, t2 - t1))
                 meanPrecisionInv += precinv
                 meanRecall += 0.5 * ms.recall
             if nMatches1 >= 1:
                 ms2, matches2 = precesion(pts_2, pts_1, vM1, depth_2, depth_1, np.linalg.inv(H_batch[j]))
                 if draw:
                     draw_matches(matches2, pts_2, pts_1, img_output2[IMG_SIZE[0]:, :, :])
-                print("%i/%i\trecall: %f\tnMatches: %i\tTime: %f" % (nCases, N, ms2.recall, ms2.nMatches, t2 - t1))
+                if print_res:
+                    print("%i/%i\trecall: %f\tnMatches: %i\tTime: %f" % (nCases, N, ms2.recall, ms2.nMatches, t2 - t1))
+                    print('\n')
                 meanRecall += 0.5 * ms2.recall
-            print('\n')
 
             if draw:
                 cv2.imshow('filtered', img_output)
@@ -419,11 +420,14 @@ def loop(draw=True):
 
     mrecall = meanRecall / float(nCases)
     mrepeat = repeatability / float(nCases)
-    print("Mean recall: %f\tMean 1-precision: %f\tMean time: %f"%(mrecall,
-                                                              meanPrecisionInv/float(nCases),
-                                                              meanTime/float(nCases)))
-    print("Repeatability: {0}".format(mrepeat))
-    print("F1: {0}".format(2 * mrecall * mrepeat / (mrecall + mrepeat)))
+    f1 = 2 * mrecall * mrepeat / (mrecall + mrepeat)
+    if print_res:
+        print("Mean recall: %f\tMean 1-precision: %f\tMean time: %f"%(mrecall,
+                                                                  meanPrecisionInv/float(nCases),
+                                                                  meanTime/float(nCases)))
+        print("Repeatability: {0}".format(mrepeat))
+        print("F1: {0}".format(f1))
+    return f1
 
 
 def repeat(H_batch, K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1, pts_2, draw):
@@ -457,5 +461,16 @@ def make_image_quad(img_1, img_2, pts_1, pts_2):
     img_output[:IMG_SIZE[0], IMG_SIZE[1]:, :] = img_2
     return img_output.copy()
 
-# loop(draw=False)
-loop(draw=True)
+
+def run_all_snapshots():
+    best_f1 = 0.0
+    best_path = None
+    for f in os.listdir('.'):
+        if f.endswith('.pt'):
+            current = loop(draw=False, weights=f, print_res=False)
+            if best_f1 < current:
+                print('new best: {0}, f1: {1} '.format(f, current))
+                best_f1 = current
+                best_path = f
+
+loop(draw=False)
