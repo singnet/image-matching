@@ -11,67 +11,6 @@ from fem import hom
 from fem.reinf_utils import random_dist
 
 
-def randomize_points(input):
-    max, _ = input.max(dim=0)
-    min, _ = input.min(dim=0)
-    result = torch.randint_like(input, low=-3, high=3) + input
-    result[:, 0] = result[:, 0].clamp(min=min[0], max=max[0])
-    result[:, 1] = result[:, 1].clamp(min=min[1], max=max[1])
-    return result
-
-
-def draw_reward(H, desc1, desc2, img1, img2, points1, points1projected, points2):
-    import cv2
-    from fem.hom import create_grid_batch
-    cv2.imshow('img1', img1.cpu().numpy() / 255.0)
-
-    # points1 = util.swap_rows(create_grid_batch(1, 64, 64)[0][:-1]).T.long() * 4
-    in_bounds, points1projected = project_points(H, torch.ones((64, 64)), points1)
-    points1, points1projected = ensure_2d_points(in_bounds, points1, points1projected)
-    points2 = randomize_points(points1projected)
-    desc1_int = util.descriptor_interpolate(desc1, 256,
-                                            256, points1)
-    desc2_int = util.descriptor_interpolate(desc2, 256,
-                                        256, points2)
-
-    get_reward(desc1_int, desc2_int, img1, img2, points1, points1projected, points2, 'rew', use_means=True, use_geom=True, dist_thres=4)
-    get_reward(desc1_int, desc2_int, img1, img2, points1, points1projected, points2, 'rew2', use_means=True, use_geom=False, dist_thres=4)
-    cv2.waitKey(100)
-    import pdb;pdb.set_trace()
-
-
-def get_reward(desc1_int, desc2_int, img1, img2, points1, points1projected, points2, name, use_means, use_geom,
-               dist_thres=35):
-    import cv2
-
-    reward, loss_desc, quality, k2 = match_desc_reward(points1projected, points2,
-                                                       desc1_int, desc2_int,
-                                                       dist_thres=dist_thres, use_geom=use_geom,
-                                                       img1=img1, img2=img2, use_means=use_means)
-    reward = reward / reward.max()
-    rew = torch.zeros((256, 256)).to(reward)
-    rew[points1[:, 0], points1[:, 1]] = reward
-    cv2.imshow(name, rew.cpu().numpy())
-
-
-def distance_reward(actions, actions2,  average, distance, distance1, logprob, logprob2, newmask1, newmask2):
-    if distance is None or distance1 is None:
-        rew = - torch.tensor(0.01).to(logprob.device)
-        return -rew, rew
-    else:
-        rew1 = distance_reward_for_points(actions, distance, newmask1)
-        rew2 = distance_reward_for_points(actions2, distance1, newmask2)
-    # negate because torch does minimization
-    # this 'loss' is expected reward with should be maximized
-    # todo: use prob?
-    l1, rew1 = extract_loss(logprob, newmask1, rew1, average[0])
-    l2, rew2 = extract_loss(logprob2, newmask2, rew2, average[0])
-    rew = (rew1.mean() + rew2.mean()) * 0.5
-    average[0] = 0.95 * average[0] + 0.05 * rew
-    loss = 0.5 * (l1 + l2)
-    return loss, rew
-
-
 def sigmoid_abs(x):
     """
     RBF based on sigmoid
@@ -84,21 +23,6 @@ def sigmoid_abs(x):
     sigmoid_abs(16): -0.93
     """
     return (numpy.abs(1 / (1 + numpy.exp(-x / 4)) - 0.5) - 0.5) * -4 - 1
-
-
-def reward(distance):
-    return torch.from_numpy(sigmoid_abs(distance))
-
-
-def distance_reward_for_points(actions, distance, point_mask):
-    distance = distance.reshape(actions.shape)
-    rew = reward(distance).to(actions.device)
-    # no_poin_weight = point_mask.sum().float() / torch.max(torch.ones(1).squeeze(),
-    #                                                      nonpoint_mask.sum())
-    # for non-points the further nearest point the better
-    non_point_reward = rew * -1 * 0.01
-    rew = rew.float() * point_mask.float()# + non_point_reward.float() * nonpoint_mask.float()
-    return rew
 
 
 def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
@@ -245,13 +169,6 @@ def project_points(H, point_mask, points):
     return in_bounds, points1projected
 
 
-def extract_loss(logprob, mask, reward, average):
-    nz = numpy_nonzero(mask)
-    l1 = (logprob[nz] * (reward.float()[nz] - average)).mean()
-    return l1, reward.float()[nz]
-
-
-
 def unfold_coords(action):
     result = torch.zeros(list(action.shape) + [2])
     for row in range(action.shape[0]):
@@ -280,68 +197,6 @@ def masked(actions1, mask=1.0, new_size=100):
     points1 = coords.reshape(numpy.prod(coords.shape[0:2]), 2).long()
     points1masked = points1[mask1.flatten().nonzero()].squeeze(1).to(actions1)
     return mask1.to(actions1), points1masked
-
-
-def compute_loss_hom(actions, actions2, batch, logprob1,
-                     logprob2, desc1, desc2, heatmap1,
-                     heatmap2, img1=None, img2=None, average=[0],
-                     target=None):
-
-    H = batch['H']
-    H_inv = batch['H_inv']
-    # img1_reproj = hom.bilinear_sampling(img2.unsqueeze(2), H_inv, h_template=heatmap1.shape[1],
-    #                               w_template=heatmap1.shape[2], to_numpy=False, mode='nearest')
-    # import matplotlib.pyplot as plt
-    # plt.imshow(img1_reproj.cpu().detach())
-    # plt.imshow(mask_reproj.cpu().detach())
-    # plt.imshow(heatmap2.detach())
-    # plt.imshow(heatmap1[1].detach())
-    # import cv2
-    # cv2.imshow('img2', img2.numpy() / 255.)
-    # cv2.imshow('img1', img1.numpy() / 255.)
-    # cv2.imshow('img2-reproj', img1_reproj.detach().numpy() / 255.0)
-    # cv2.imshow('heatmap2', heatmap2[1].detach().numpy())
-    # cv2.imshow("heat2-projected", new_t1.detach().numpy())
-    # grid = util.desc_coords_no_homography(32, 32, 8, 8)
-    # coords_after_homography = img_mask2[0, grid[1].long(), grid[0].long()] # col, row
-    # masknew2 = coords_after_homography.reshape([32, 32]).to(point_mask1)
-    # point_mask2, points2masked = masked(actions2, new_size=2000)
-    # img_mask2 = _2d_data['mask']
-    # nms = PoolingNms(8)
-
-    mask2 = batch['mask'].squeeze()
-    # points2nms = nms(heatmap2[1].unsqueeze(0).unsqueeze(0) * mask2).squeeze().nonzero()
-    point_mask1, points1masked = masked(actions, new_size=50)
-    # both ways don't seem to help
-    # use Hinv for points1 -> points2 mapping
-    args = dict(H=H_inv,
-                points1=points1masked,
-                logprob1=logprob1,
-                point1_mask=point_mask1,
-                logprob2=logprob2,
-                desc1=desc1,
-                desc2=desc2,
-                average=average,
-                img1=img1,
-                img2=img2,
-                target=target)
-    result = process(loss_hom(**args), )
-    # heat2_reproj = hom.bilinear_sampling(heatmap2[1].unsqueeze(2), H_inv, h_template=heatmap1.shape[1],
-    #                               w_template=heatmap1.shape[2], to_numpy=False, mode='nearest').to(heatmap1)
-    # # reproj = hom.bilinear_sampling(heatmap2[1].unsqueeze(2), H_inv, h_template=heatmap1.shape[1],
-    # #                               w_template=heatmap1.shape[2], to_numpy=False, mode='bilinear').to(heatmap1)
-    # import pdb;pdb.set_trace()
-    #
-    #
-    #
-    # mask_reproj = hom.bilinear_sampling(mask2.unsqueeze(2), H_inv, h_template=heatmap1.shape[1],
-    #                               w_template=heatmap1.shape[2], to_numpy=False, mode='nearest').to(heatmap1)
-    # det_diff = -(torch.log(heatmap1[1])[numpy_nonzero(mask_reproj)] * heat2_reproj[numpy_nonzero(mask_reproj)].detach()).mean()
-    #
-
-    result['det_diff'] = compute_det_diff(H, H_inv, heatmap1[1].squeeze(), heatmap2[1].squeeze(), mask2)
-    result['loss'] = result['loss_points'] + result['det_diff']
-    return result
 
 
 def compute_loss_hom_det(heatmap1, heatmap2, batch, point_mask1,

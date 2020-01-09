@@ -19,7 +19,7 @@ from fem.goodpoint import GoodPoint
 
 import numpy
 
-from fem.loss_reinf import compute_loss_hom, compute_loss_hom_det
+from fem.loss_reinf import compute_loss_hom_det
 
 
 
@@ -130,51 +130,6 @@ def mean(lst):
     return torch.mean(torch.stack(lst))
 
 
-def train_reinf_by_pairs(batch, model, **kwargs):
-    imgs = torch.cat([batch['img1'], batch['img2']]).float()
-    height, width = imgs.shape[1], imgs.shape[2]
-    assert len(imgs.shape) == 3
-
-    desc_model = kwargs.get('desc_model', None)
-    if desc_model:
-        desc_model = desc_model.eval()
-        _, desc = desc_model.semi_forward(imgs.unsqueeze(1) / 255.0)
-        del _
-        desc = desc.detach()
-
-    heatmaps, desc_back = model.semi_forward(imgs.unsqueeze(1) / 255.0)
-    if not desc_model:
-        desc = desc_back
-    else:
-        del desc_back
-
-    desc1 = desc[:len(heatmaps) // 2]
-    desc2 = desc[len(heatmaps) // 2:]
-    l1_norm = torch.norm(heatmaps, p=1, dim=1).mean()
-    heatmap1 = heatmaps[:len(heatmaps) // 2]
-    heatmap2 = heatmaps[len(heatmaps) // 2:]
-
-    actions1, logprob1, prob1 = sample(heatmap1)
-    actions2, logprob2, prob2 = sample(heatmap2)
-    expanded2 = model.expand_results(model.depth_to_space, heatmap2)
-    expanded1 = model.expand_results(model.depth_to_space, heatmap1)
-    _3d_data = batch
-    tmp_results = defaultdict(list)
-    for i in range(len(actions1)):
-        tmp = compute_loss_hom(actions1[i], actions2[i],
-                {k: v[i] for (k,v) in _3d_data.items()},
-                logprob1[i], logprob2[i], desc1[i], desc2[i], expanded1[i],
-                expanded2[i], img1=batch['img1'][i],
-                     img2=batch['img2'][i])
-        for key, value in tmp.items():
-            tmp_results[key].append(value)
-    result = {key: mean(value) for (key, value) in tmp_results.items()}
-    result['loss'] = result['loss']
-    result['max_max'] = heatmap1[:,1:].max()
-    result['max_mean'] = heatmap1[:,1:].mean(dim=(0,2,3)).max()
-    return result
-
-
 def train_maxpool_by_pairs(batch, model, **kwargs):
     imgs = torch.cat([batch['img1'], batch['img2']]).float()
     height, width = imgs.shape[1], imgs.shape[2]
@@ -196,7 +151,6 @@ def train_maxpool_by_pairs(batch, model, **kwargs):
     keypoints_prob = model.expand_results(model.depth_to_space, heatmaps)
     point_mask32 = threshold_nms(keypoints_prob, pool=32, take=None)
     point_mask16 = threshold_nms(keypoints_prob, pool=16, take=None)
-    # import pdb;pdb.set_trace()
     # drawing.show_points(batch['img1'][0].cpu().numpy() / 255.0, point_mask32[0].nonzero(), 'img1')
     # drawing.show_points(batch['img2'][0].cpu().numpy() / 255.0, point_mask16[20].nonzero(), 'img2')
 
@@ -240,25 +194,26 @@ def train_super():
         batch_size = 1
 
 
-    super_file = "./super800.pt"
+    super_file = "./super4100.pt"
     # super_file = "./snapshots/super.snap.4.pt"
 
 
-    # state_dict = torch.load(super_file, map_location=device)
+    state_dict = torch.load(super_file, map_location=device)
     sp = GoodPoint(activation=torch.nn.ReLU(), grid_size=8,
                batchnorm=True, dustbin=0).to(device)
     # detector_layer_names = ('convPa', 'convPb', 'batchnormPa', 'batchnormPb')
-    # print("loading weights from {0}".format(super_file))
+    print("loading weights from {0}".format(super_file))
     # to_pop = [k for k in state_dict['superpoint'] if k.startswith(detector_layer_names)]
     # print("reset: {0}".format(to_pop))
     # for p in to_pop:
     #    state_dict['superpoint'].pop(p)
-    # print("loading optimizer")
+    sp.load_state_dict(state_dict['superpoint'], strict=True)
+    print("loading optimizer")
     optimizer = optim.RMSprop(sp.parameters(), lr=lr, weight_decay=weight_decay)
-    # state_dict['optimizer']['param_groups'][0]['lr'] = lr
-    # state_dict['optimizer']['param_groups'][0]['initial_lr'] = lr
+    state_dict['optimizer']['param_groups'][0]['lr'] = lr
+    state_dict['optimizer']['param_groups'][0]['initial_lr'] = lr
 
-    # optimizer.load_state_dict(state_dict['optimizer'])
+    optimizer.load_state_dict(state_dict['optimizer'])
 
 
     decay_rate = 0.9
