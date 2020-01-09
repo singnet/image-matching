@@ -1,7 +1,6 @@
 import torch
 import numpy
 np = numpy
-from geomloss import SamplesLoss  # See also ImagesLoss, VolumesLoss
 
 
 # preferences, need to be converted to costs
@@ -101,15 +100,16 @@ def optimal_transport_np(M, r, c, lam, epsilon=1e-8):
     return P, np.sum(P * M)
 
 
-
-
-P, cost = compute_optimal_transport(x * -1, r, c, 5)
-print(P)
-P, cost = optimal_transport(x * -1, r, c, 5)
-print(P)
-# shifting cost above zero will not change the solution P
-x = x * -1
-x = x - x.min()
-P, cost = optimal_transport_np(x.numpy(), r.numpy(), c.numpy(), 5)
-print(P)
-import pdb;pdb.set_trace()
+if __name__ == '__main__':
+    P, cost = compute_optimal_transport(x * -1, r, c, 5)
+    print(P)
+    P, cost = optimal_transport(x * -1, r, c, 5)
+    print(P)
+    # shifting cost above zero will not change the solution P
+    x = x * -1
+    x = x - x.min()
+    P, cost = optimal_transport_np(x.numpy(), r.numpy(), c.numpy(), 5)
+    print(P)
+    P1, cost1 = optimal_transport_np(x.numpy(), r.numpy(), c.numpy(), 5, epsilon=0.01)
+    print(P1)
+    import pdb;pdb.set_trace()
