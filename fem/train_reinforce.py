@@ -34,7 +34,7 @@ poses_file = '/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/village_
 
 
 from fem.training import train_loop, TransformWithResize, TransformWithResizeThreshold, \
-    make_noisy_transformers, train, test, exponential_lr
+    make_noisy_transformers, test, exponential_lr
 
 
 def setup_engine(Engine, train, model, device, optimizer, scheduler,
@@ -102,14 +102,6 @@ def swap3d(_3d_data):
                 depth1=depth2,
                 pose2=pose1,
                 pose1=pose2)
-
-
-def geom_match(keypoints, keypoints2):
-    import sklearn
-    tree = sklearn.neighbors.KDTree(keypoints2.cpu(),
-                                    leaf_size=6)
-    geom_dist, ind1 = tree.query(keypoints.cpu())
-    return geom_dist, ind1
 
 
 def draw_m(img1, img2, matches, points, points2):

@@ -472,5 +472,7 @@ def run_all_snapshots():
                 print('new best: {0}, f1: {1} '.format(f, current))
                 best_f1 = current
                 best_path = f
+    print(best_path)
 
+#run_all_snapshots()
 loop(draw=False)

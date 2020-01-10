@@ -515,3 +515,19 @@ def geom_match(keypoints, keypoints2):
                                     leaf_size=6)
     geom_dist, ind1 = tree.query(keypoints)
     return geom_dist, ind1
+
+
+def project_points(H, point_mask, points):
+    points1projected = compute_new_coords(H,
+                                          torch.cat([torch.zeros_like(points),
+                                                     points], dim=1)[:, 1:].float()).round().long()
+    in_bounds = (
+            (points1projected[:, 0] < 256) * (points1projected[:, 0] >= 0)
+            * (points1projected[:, 1] >= 0) * (points1projected[:, 1] < 256))
+    if point_mask is not None:
+        point_mask.flatten()[point_mask.flatten().nonzero().squeeze()] = point_mask.flatten()[
+                                                                             point_mask.flatten().nonzero().squeeze()] * in_bounds.to(
+            point_mask)
+    points1projected = points1projected[in_bounds.nonzero()].squeeze()
+    return in_bounds, points1projected
+

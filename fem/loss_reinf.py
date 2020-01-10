@@ -44,7 +44,7 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
     H = kwargs['H']
     point1_mask = kwargs['point1_mask']
     points11 = kwargs['points1']
-    in_bounds, points1projected = project_points(H, point1_mask, points11)
+    in_bounds, points1projected = util.project_points(H, point1_mask, points11)
     points1, points1projected = ensure_2d_points(in_bounds, points11, points1projected)
 
     # compute descriptors
@@ -117,7 +117,7 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
 
             H_inv = numpy.linalg.inv(H.cpu())
             loss_points = -logprob2[means.long()[:,0], means.long()[:,1]].mean()
-            in_bounds, coords1 = project_points(H_inv, None, means)
+            in_bounds, coords1 = util.project_points(H_inv, None, means)
             if numpy.prod(coords1.shape):
                 if len(coords1.shape) == 1:
                     coords1 = coords1.unsqueeze(0)
@@ -152,21 +152,6 @@ def ensure_2d_points(in_bounds, points, points1projected):
         points1projected = points1projected.unsqueeze(0)
         points = points.unsqueeze(0)
     return points, points1projected
-
-
-def project_points(H, point_mask, points):
-    points1projected = util.compute_new_coords(H,
-                                               torch.cat([torch.zeros_like(points),
-                                                          points], dim=1)[:, 1:].float()).round().long()
-    in_bounds = (
-            (points1projected[:, 0] < 256) * (points1projected[:, 0] >= 0)
-            * (points1projected[:, 1] >= 0) * (points1projected[:, 1] < 256))
-    if point_mask is not None:
-        point_mask.flatten()[point_mask.flatten().nonzero().squeeze()] = point_mask.flatten()[
-                                                                             point_mask.flatten().nonzero().squeeze()] * in_bounds.to(
-            point_mask)
-    points1projected = points1projected[in_bounds.nonzero()].squeeze()
-    return in_bounds, points1projected
 
 
 def unfold_coords(action):
@@ -292,24 +277,6 @@ def process(*dicts):
             res[key] = torch.mean(torch.stack(tmp))
     return res
 
-def match_points_reward(points1projected, points2, desc1_int, desc2_int_proj,dist_thres=4):
-    import sklearn
-    # match geometrically
-    # fit(points2)
-    tree = sklearn.neighbors.KDTree(points2.cpu(),
-                                    leaf_size=6)
-
-    # mapping points1projected -> points2
-    # query(points1)
-    geom_dist, ind2 = tree.query(points1projected.cpu(), min(len(points1projected), 10))
-    ind2 = ind2.squeeze()
-    mean_geom = geom_dist[:, 1:].mean(axis=1)
-    mean_geom = mean_geom / 20
-
-    geom_dist = geom_dist[:, 0]
-    ind2 = numpy.arange(len(desc1_int))
-
-
 
 def match_desc_reward(points1projected, points2, desc1_int,
                       desc2,
@@ -318,16 +285,8 @@ def match_desc_reward(points1projected, points2, desc1_int,
                       use_geom=True, geom_dist_average=[0.75], neg_reward=-0.5):
     if numpy.prod(points1projected.shape) == 0:
         return torch.ones((1,)).to(desc1_int) * -0.1, None
-    import sklearn
-    # match geometrically
-    # fit(points2)
-    tree = sklearn.neighbors.KDTree(points2.cpu(),
-                                    leaf_size=6)
 
-
-    # mapping points1projected -> points2
-    # query(points1)
-    geom_dist, ind2 = tree.query(points1projected.cpu(), min(len(points1projected), 10))
+    geom_dist, ind2 = geom_match(points1projected, points2)
     ind2 = ind2[:,0]
 
     mean_geom = geom_dist[:, 1:].mean(axis=1)
@@ -414,3 +373,34 @@ def desc_reward(desc1_int, desc2_int, dist, ind2, k2_desc, use_means):
         # todo: add to descriptor loss
         reward = (sim_expected - torch.from_numpy(means).to(sim_expected))
     return reward, sim_expected, similarity_desc[:, 0], similarity_rand
+
+
+def compute_loss_matcher(heat1, heat2, _3d_data,
+        mask1, mask2, desc1, desc2, glue):
+    import pdb;pdb.set_trace()
+    points1=point_mask1.nonzero(),
+    points2=point_mask2.nonzero(),
+    point1_mask=point_mask1,
+
+    tree = sklearn.neighbors.KDTree(points2.cpu(),
+                                    leaf_size=6)
+
+
+    # mapping points1projected -> points2
+    # query(points1)
+    geom_dist, ind2 = tree.query(points1projected.cpu(), min(len(points1projected), 10))
+
+
+
+def geom_match(points1, points2, num=10):
+    # match geometrically
+    # fit(points2)
+    tree = sklearn.neighbors.KDTree(points2.cpu(),
+                            leaf_size=6)
+
+
+    # mapping points1projected -> points2
+    # query(points1)
+    geom_dist, ind2 = tree.query(points1.cpu(), min(len(points1), num))
+    return geom_dist, ind2
+
