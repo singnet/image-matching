@@ -531,3 +531,24 @@ def project_points(H, point_mask, points):
     points1projected = points1projected[in_bounds.nonzero()].squeeze()
     return in_bounds, points1projected
 
+
+def geom_match(points1, points2, num=10):
+    # match geometrically
+    # fit(points2)
+    tree = sklearn.neighbors.KDTree(points2.cpu(),
+                            leaf_size=6)
+
+
+    # mapping points1projected -> points2
+    # query(points1)
+    geom_dist, ind2 = tree.query(points1.cpu(), min(len(points1), num))
+    return geom_dist, ind2
+
+
+def get_points_in_bounds(in_bounds, points, points1projected):
+    points = points[in_bounds.nonzero()].squeeze()
+    if len(points1projected.shape) == 1:
+        points1projected = points1projected.unsqueeze(0)
+        points = points.unsqueeze(0)
+    return points, points1projected
+

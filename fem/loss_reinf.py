@@ -45,7 +45,7 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
     point1_mask = kwargs['point1_mask']
     points11 = kwargs['points1']
     in_bounds, points1projected = util.project_points(H, point1_mask, points11)
-    points1, points1projected = ensure_2d_points(in_bounds, points11, points1projected)
+    points1, points1projected = util.get_points_in_bounds(in_bounds, points11, points1projected)
 
     # compute descriptors
     # use only points whose projections are in bounds
@@ -78,21 +78,6 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
                                                            points=points1,
                                                            dist_thres=4,
                                                            neg_reward=neg_reward)
-        # to points1
-        # in_bounds, points1pr = project_points(H.inverse(), None, points2)
-        # desc1_int = util.descriptor_interpolate(desc1, 256,
-        #                                          256, points1pr)
-        # _, loss_desc, _, _, _ = match_desc_reward(points2,
-        #                                            points2,
-        #                                            desc1_int, desc2_int,
-        #                                            img1=img1,
-        #                                            use_geom=kwargs.get('use_geom', False),
-        #                                            use_means=True,
-        #                                            img2=img2,
-        #                                            points=points1,
-        #                                            dist_thres=3,
-        #                                            neg_reward=neg_reward)
-
     deb = True
     deb = False
     if deb:
@@ -146,13 +131,6 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
     return result
 
 
-def ensure_2d_points(in_bounds, points, points1projected):
-    points = points[in_bounds.nonzero()].squeeze()
-    if len(points1projected.shape) == 1:
-        points1projected = points1projected.unsqueeze(0)
-        points = points.unsqueeze(0)
-    return points, points1projected
-
 
 def unfold_coords(action):
     result = torch.zeros(list(action.shape) + [2])
@@ -190,26 +168,6 @@ def compute_loss_hom_det(heatmap1, heatmap2, batch, point_mask1,
 
     H = batch['H']
     H_inv = batch['H_inv']
-    # img1_reproj = hom.bilinear_sampling(img2.unsqueeze(2), H_inv, h_template=heatmap1.shape[1],
-    #                               w_template=heatmap1.shape[2], to_numpy=False, mode='nearest')
-    # import matplotlib.pyplot as plt
-    # plt.imshow(img1_reproj.cpu().detach())
-    # plt.imshow(mask_reproj.cpu().detach())
-    # plt.imshow(heatmap2.detach())
-    # plt.imshow(heatmap1[1].detach())
-    # import cv2
-    # cv2.imshow('img2', img2.numpy() / 255.)
-    # cv2.imshow('img1', img1.numpy() / 255.)
-    # cv2.imshow('img2-reproj', img1_reproj.detach().numpy() / 255.0)
-    # cv2.imshow('heatmap2', heatmap2[1].detach().numpy())
-    # cv2.imshow("heat2-projected", new_t1.detach().numpy())
-    # grid = util.desc_coords_no_homography(32, 32, 8, 8)
-    # coords_after_homography = img_mask2[0, grid[1].long(), grid[0].long()] # col, row
-    # masknew2 = coords_after_homography.reshape([32, 32]).to(point_mask1)
-    # point_mask2, points2masked = masked(actions2, new_size=2000)
-    # img_mask2 = _2d_data['mask']
-    # nms = PoolingNms(8)
-
     mask2 = batch['mask'].squeeze()
     mask1 = torch.ones_like(heatmap1)
 
@@ -286,7 +244,7 @@ def match_desc_reward(points1projected, points2, desc1_int,
     if numpy.prod(points1projected.shape) == 0:
         return torch.ones((1,)).to(desc1_int) * -0.1, None
 
-    geom_dist, ind2 = geom_match(points1projected, points2)
+    geom_dist, ind2 = util.geom_match(points1projected, points2)
     ind2 = ind2[:,0]
 
     mean_geom = geom_dist[:, 1:].mean(axis=1)
@@ -374,33 +332,4 @@ def desc_reward(desc1_int, desc2_int, dist, ind2, k2_desc, use_means):
         reward = (sim_expected - torch.from_numpy(means).to(sim_expected))
     return reward, sim_expected, similarity_desc[:, 0], similarity_rand
 
-
-def compute_loss_matcher(heat1, heat2, _3d_data,
-        mask1, mask2, desc1, desc2, glue):
-    import pdb;pdb.set_trace()
-    points1=point_mask1.nonzero(),
-    points2=point_mask2.nonzero(),
-    point1_mask=point_mask1,
-
-    tree = sklearn.neighbors.KDTree(points2.cpu(),
-                                    leaf_size=6)
-
-
-    # mapping points1projected -> points2
-    # query(points1)
-    geom_dist, ind2 = tree.query(points1projected.cpu(), min(len(points1projected), 10))
-
-
-
-def geom_match(points1, points2, num=10):
-    # match geometrically
-    # fit(points2)
-    tree = sklearn.neighbors.KDTree(points2.cpu(),
-                            leaf_size=6)
-
-
-    # mapping points1projected -> points2
-    # query(points1)
-    geom_dist, ind2 = tree.query(points1.cpu(), min(len(points1), num))
-    return geom_dist, ind2
 
