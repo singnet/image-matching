@@ -57,12 +57,12 @@ def compute_optimal_transport(M, r, c, lam, epsilon=1e-8):
     return P, torch.sum(P * M)
 
 
-
 def optimal_transport(M, r, c, lam, epsilon=1e-8):
     n, m = M.shape
-    Kinit = torch.exp(- M * lam)
-    K = torch.diag(1./r).mm(Kinit)
-    # somehow faster
+    # not very stable
+    Kinit = torch.exp(-M.double() * lam)
+    K = torch.diag(1./r.double()).mm(Kinit)
+
     u = r
     v = c
     vprev = v * 2
@@ -70,11 +70,10 @@ def optimal_transport(M, r, c, lam, epsilon=1e-8):
     while(torch.abs(v - vprev).sum() > epsilon):
         vprev = v
         # changing order affects convergence a little bit
-        v = c / K.T.matmul(u)
+        v = c / K.T.matmul(u.double())
         u = r / K.matmul(v)
         i += 1
 
-    print(i)
     P = torch.diag(u) @ K @ torch.diag(v)
     return P, torch.sum(P * M)
 
@@ -101,10 +100,18 @@ def optimal_transport_np(M, r, c, lam, epsilon=1e-8):
 
 
 if __name__ == '__main__':
-    P, cost = compute_optimal_transport(x * -1, r, c, 5)
+    print('numpy')
+    P, cost = compute_optimal_transport(x * -1, r, c, 0.2, epsilon=0.001)
     print(P)
-    P, cost = optimal_transport(x * -1, r, c, 5)
-    print(P)
+    print('ot_pytorch')
+    # from ot_pytorch import sink, sink_stabilized
+    # P2, dist2 = sink(x * -1, r, c, reg=0.2)
+    # P3, dist3 = sink_stabilized(x * -1, r, c, reg=0.2, epsilon=0.001)
+    #import pdb;pdb.set_trace()
+    print('torch')
+    P1, cost1 = optimal_transport(x * -1, r, c, 5)
+    print(P1)
+    print('shifted')
     # shifting cost above zero will not change the solution P
     x = x * -1
     x = x - x.min()
@@ -112,4 +119,4 @@ if __name__ == '__main__':
     print(P)
     P1, cost1 = optimal_transport_np(x.numpy(), r.numpy(), c.numpy(), 5, epsilon=0.01)
     print(P1)
-    import pdb;pdb.set_trace()
+
