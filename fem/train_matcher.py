@@ -18,6 +18,7 @@ from fem.glue import Glue
 from ignite.engine import Engine
 from fem.goodpoint import GoodPoint
 from fem.loss_match import compute_loss_matcher
+from fem.stats import Stats
 
 import numpy
 
@@ -38,7 +39,7 @@ from fem.training import train_loop, TransformWithResize, TransformWithResizeThr
     make_noisy_transformers, train, test, exponential_lr
 
 
-def train(batch, model, optimizer, scheduler, device, function, count=[0], **kwargs):
+def train(batch, model, optimizer, scheduler, device, function, stats, count=[0], **kwargs):
     model.eval()
     glue = kwargs.get('glue')
     glue.train()
@@ -48,18 +49,12 @@ def train(batch, model, optimizer, scheduler, device, function, count=[0], **kwa
         batch[k] = v.to(device)
 
     out = function(batch, model, **kwargs)
+    stats.update(**{k:float(v) for k,v in out.items()})
     if count[0] % 10 == 0:
-        print("out: {0}".format({k:float(v) for k,v in out.items()}))
-        # (out['loss_points']).backward(retain_graph=True)
-        # print("out['loss_points']: " + str(out['loss_points']))
-        # print("points: " + str(out['points']))
-        # print(model.convPa.weight.grad.max())
-        # print(model.convPa.bias.grad.max())
+        print("stats: {0}".format({k:float(v) for k,v in stats.stats.items()}))
+
     loss = out['loss']
     loss.backward()
-    print("gradients")
-    print(glue.pos_embed.l1.weight.grad.max())
-    print(glue.bin_score.grad)
     optimizer.step()
     scheduler.step()
     result = {k: v.cpu().detach().numpy() for (k,v) in out.items()}
@@ -69,7 +64,7 @@ def train(batch, model, optimizer, scheduler, device, function, count=[0], **kwa
     count[0] += 1
     if count[0] and count[0] % 100 == 0:
         torch.save({'optimizer': optimizer.state_dict(),
-                    'superpoint': glue.state_dict()}, 'glue{0}.pt'.format(count[0]))
+                    'glue': glue.state_dict()}, 'glue{0}.pt'.format(count[0]))
     return result
 
 
@@ -113,9 +108,7 @@ def train_glue(batch, model, **kwargs):
 
     keypoints_prob = model.expand_results(model.depth_to_space, heatmaps)
     point_mask32 = threshold_nms(keypoints_prob, pool=32, take=None)
-    point_mask16 = threshold_nms(keypoints_prob, pool=16, take=None)
-    # drawing.show_points(batch['img1'][0].cpu().numpy() / 255.0, point_mask32[0].nonzero(), 'img1')
-    # drawing.show_points(batch['img2'][0].cpu().numpy() / 255.0, point_mask16[20].nonzero(), 'img2')
+    point_mask16 = threshold_nms(keypoints_prob, pool=32, take=None)
 
     desc1 = desc[:len(heatmaps) // 2]
     desc2 = desc[len(heatmaps) // 2:]
@@ -151,7 +144,7 @@ def train_super():
     print('using device {0}'.format(device))
     lr = 0.005
     epochs = 5
-    weight_decay = 0.005
+    weight_decay = 0.001
     aggregate = False
     if aggregate:
         batch_size = 1
@@ -194,12 +187,13 @@ def train_super():
     test_engine = Engine(lambda eng, batch: test(eng, batch, sp, device, loss_function=test_callback))
     util.add_metrics(test_engine, average=True)
 
+    stats = Stats()
     for epoch in range(epochs):
         for batch in coco_loader:
-            train(batch, sp, optimizer, scheduler, device, train_glue, glue=glue)
+            train(batch, sp, optimizer, scheduler, device, train_glue, stats, glue=glue)
 
     torch.save({'optimizer': optimizer.state_dict(),
-                'superpoint': sp.state_dict()}, 'super{0}.pt'.format(scheduler.last_epoch))
+                'glue': sp.state_dict()}, 'glue{0}.pt'.format(scheduler.last_epoch))
 
 
 class NmsImgTransform:
