@@ -61,6 +61,7 @@ def sink_stabilized(M, r, c, reg, numItermax=1000, tau=1e2, epsilon=1e-9, warmst
     c : torch.Tensor
         target amounts(equals to sum of columns in M)
     """
+    M = M - M.min() + 0.0000000001
     a = r
     b = c
 
@@ -68,7 +69,6 @@ def sink_stabilized(M, r, c, reg, numItermax=1000, tau=1e2, epsilon=1e-9, warmst
     na = len(a)
     nb = len(b)
 
-    cpt = 0
     # we assume that no distances are null except those of the diagonal of
     # distances
     if warmstart is None:
@@ -87,15 +87,13 @@ def sink_stabilized(M, r, c, reg, numItermax=1000, tau=1e2, epsilon=1e-9, warmst
     # print(np.min(K))
 
     K = get_K(alpha, beta)
-    transp = K
+
     loop = 1
     cpt = 0
     err = 1
+    transp = None
+
     while loop:
-
-        uprev = u
-        vprev = v
-
         # sinkhorn update
         v = torch.div(b, (K.t().matmul(u) + 1e-16))
         u = torch.div(a, (K.matmul(v) + 1e-16))
@@ -107,8 +105,10 @@ def sink_stabilized(M, r, c, reg, numItermax=1000, tau=1e2, epsilon=1e-9, warmst
             K = get_K(alpha, beta)
 
         if cpt % print_period == 0:
+            transp_prev = transp
             transp = get_Gamma(alpha, beta, u, v)
-            err = (torch.sum(transp) - b).norm(1).pow(2)
+            if transp_prev is not None:
+                err = (transp - transp_prev).abs().max()
 
         if err <= epsilon:
             loop = False
@@ -130,6 +130,7 @@ def sink_stabilized(M, r, c, reg, numItermax=1000, tau=1e2, epsilon=1e-9, warmst
     cost = torch.sum(get_Gamma(alpha, beta, u, v)*M)
     return P, cost
 
+
 def pairwise_distances(x, y, method='l1'):
     n = x.size()[0]
     m = y.size()[0]
@@ -144,6 +145,7 @@ def pairwise_distances(x, y, method='l1'):
         dist = torch.pow(x - y, 2).sum(2)
 
     return dist.float()
+
 
 def dmat(x,y):
     mmp1 = torch.stack([x] * x.size()[0])
