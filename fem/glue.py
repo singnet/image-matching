@@ -52,7 +52,7 @@ class Glue(nn.Module):
         self.final_projection = nn.Linear(256, 256)
         init_weights(self)
         self.bin_score = nn.Parameter(torch.Tensor(1))
-        self.bin_score.data = torch.Tensor([-100]).squeeze()
+        self.bin_score.data = torch.Tensor([-0.5]).squeeze()
         self.norm = [1000.0 for i in range(6)]
 
     def key_value(self, layer_embedding):
@@ -83,12 +83,10 @@ class Glue(nn.Module):
         x = desc + self.pos_embed(points)
         for i in range(0, 5):
             x = self.compute_new_state(len(points1), x, i % 2)
-            self.update_norm(i, (x.max() - x.min()).detach().cpu().numpy())
-            x = x / (self.norm[i] * 0.1)
+
         f = self.final_projection(x)
-        self.update_norm(i + 1, (f.max() - f.min()).detach().cpu().numpy())
-        f = f / (self.norm[i + 1])
-        score = f[:len(points1)] @ (f[len(points1):]).T
+        f_norm = (f / torch.norm(f, dim=1).unsqueeze(1)) * 10
+        score = f_norm[:len(points1)] @ (f_norm[len(points1):]).T
         S = self.augment_score(score)
         len_source = len(points1) + 1
         len_target = len(points2) + 1
@@ -99,10 +97,10 @@ class Glue(nn.Module):
         r_source[dust] = source_dust
         target_dust = len_source - 1
         c_target[dust] = target_dust
-        P, cost = optimal_transport(S * -1, r_source, c_target, 0.3, epsilon=0.01)
+        P, cost = sink_stabilized(S * -1, r_source, c_target, reg=1.5, numItermax=100, epsilon=0.001)
         if torch.isnan(P).any():
             import pdb;pdb.set_trace()
-            P, cost = optimal_transport(S * -1, r_source, c_target, 0.3, epsilon=0.01)
+            P, cost = sink_stabilized(S * -1, r_source, c_target, reg=1.0, numItermax=100, epsilon=0.001)
         return P, cost
 
     def compute_new_state(self, n_source, x0, cross):
