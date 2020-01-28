@@ -139,8 +139,6 @@ def train_3d_airsim(batch, sp):
     sl1 = slice(0, len(imgs) // 2)
     sl2 = slice(len(imgs) // 2, len(imgs))
 
-
-
     desc_orig = desc[sl1]
     desc_offset = desc[sl2]
     K1 = batch['K1']

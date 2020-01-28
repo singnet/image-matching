@@ -20,9 +20,14 @@ from scipy.special import expit
 
 PATH_SAVE = "/tmp/village_00_320x240_day_night_SP_fem_my"
 
-dir_day = '/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/00_day_light'
-dir_night = '/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/00_night_light'
-poses_file = '/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/village_00.json'
+village = dict(dir_day = '/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/00_day_light',
+               dir_night ='/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/00_night_light',
+               poses_file ='/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/village_00.json')
+
+fantasy_village = dict(dir_day = '/mnt/fileserver/shared/datasets/AirSim/fantasy_village_362x362/00_day_light/',
+               dir_night ='/mnt/fileserver/shared/datasets/AirSim/fantasy_village_362x362/00_day_light_fog/',
+               poses_file ='/mnt/fileserver/shared/datasets/AirSim/fantasy_village_362x362/00_day_light_fog/fantasy_village_00.json')
+
 
 PATH_SAVE_PTS = PATH_SAVE + '/data/'
 
@@ -31,8 +36,9 @@ magicleap_file = None
 
 PATH_WEIGHTS = None
 
-PATH_WEIGHTS = "./super12000.pt"
+
 PATH_WEIGHTS = "snapshots/super16000.pt"
+PATH_WEIGHTS = "./snapshots/super12300.pt"
 
 
 #PATH_WEIGHTS = "./snapshots/TWD/tr_0.5_dr_0.4/from_scratch_super17.pt"
@@ -41,7 +47,7 @@ PATH_WEIGHTS = "snapshots/super16000.pt"
 
 batchnorm=True
 IMG_SIZE = [240, 320]
-#a
+
 
 
 conf_thresh= 0.020885
@@ -103,40 +109,16 @@ correspCount = int(0)
 
 frame_offset = 5
 batch_size = 1
-dataset = AirsimIntVarDataset(dir_day, dir_night, poses_file, frame_offset=frame_offset)
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=1)
 
 
-N = 100
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 print("using device {0}".format(device))
 
 
-sp = GoodPoint(dustbin=0,
-               activation=torch.nn.ReLU(),
-                batchnorm=batchnorm,
-                grid_size=8,
-                nms=nms).eval()
-
-
-# sp_magic = get_superpoint_model(magicleap_file="superpoint_magicleap/superpoint_v1.pth",
-#                 batchnorm=False,
-#                 nms=nms).eval()
-
-#sp_magic = SuperPoint(torch.nn.ReLU(),
-#                batchnorm=True,
-#                nms=nms).eval()
-#sp_magic = sp_magic.to(device)
-#
-#
-#sp_magic.load_state_dict(torch.load("snapshots/super12000.pt", map_location=device)['superpoint'])
 sp_magic = None
-
-sp.isTraining = False
-sp.isDropout = False
-
 
 
 
@@ -278,9 +260,7 @@ def geom_match_to_vm(geom_dist, ind2):
     return matches, len(matches)
 
 
-def loop(draw=True, weights=PATH_WEIGHTS, print_res=True):
-    sp.load_state_dict(torch.load(weights, map_location=device)['superpoint'])
-
+def loop(sp, loader, draw=True, print_res=True, thresh=conf_thresh):
     fe = sp.to(device)
     nCases = 0
     meanTime = 0
@@ -288,7 +268,7 @@ def loop(draw=True, weights=PATH_WEIGHTS, print_res=True):
     meanPrecisionInv = 0.
     repeatability = 0.
     c = 0
-    for i_batch, sample in enumerate(dataloader):
+    for i_batch, sample in enumerate(loader):
         img_1_batch = sample['img1'].numpy()
         img_2_batch = sample['img2'].numpy()
         depth_1_batch = sample['depth1'].numpy()
@@ -308,7 +288,7 @@ def loop(draw=True, weights=PATH_WEIGHTS, print_res=True):
 
             t1 = time.time()
 
-            pts_1, desc_1_ = fe.points_desc(torch.from_numpy(timg1).to(device), threshold=conf_thresh)
+            pts_1, desc_1_ = fe.points_desc(torch.from_numpy(timg1).to(device), threshold=thresh)
 
             if sp_magic:
                 heatmap, desc_crude = sp_magic.forward(torch.from_numpy(timg1).to(device) / 255.0)
@@ -323,7 +303,7 @@ def loop(draw=True, weights=PATH_WEIGHTS, print_res=True):
             t2 = time.time()
             meanTime = meanTime + (t2 - t1)
 
-            pts_2, desc_2_ = fe.points_desc(torch.from_numpy(timg2).to(device), threshold=conf_thresh)
+            pts_2, desc_2_ = fe.points_desc(torch.from_numpy(timg2).to(device), threshold=thresh)
             if sp_magic:
                 heatmap, desc_crude2 = sp_magic.forward(torch.from_numpy(timg2).to(device) / 255.0)
                 desc_2_ = util.descriptor_interpolate(desc_crude2[0],
@@ -422,9 +402,7 @@ def loop(draw=True, weights=PATH_WEIGHTS, print_res=True):
     mrepeat = repeatability / float(nCases)
     f1 = 2 * mrecall * mrepeat / (mrecall + mrepeat)
     if print_res:
-        print("Mean recall: %f\tMean 1-precision: %f\tMean time: %f"%(mrecall,
-                                                                  meanPrecisionInv/float(nCases),
-                                                                  meanTime/float(nCases)))
+        print("Mean recall: {0}".format(mrecall))
         print("Repeatability: {0}".format(mrepeat))
         print("F1: {0}".format(f1))
     return f1
@@ -432,7 +410,7 @@ def loop(draw=True, weights=PATH_WEIGHTS, print_res=True):
 
 def repeat(H_batch, K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1, pts_2, draw):
     new_coords1 = util.project3d(K1, K2, depth_1, pts_1[:, 0:2].astype(np.int32), pose1, pose2)
-    geom_dist, ind2 = util.geom_match(new_coords1, pts_2[:, 0:2])
+    geom_dist, ind2 = util.geom_match(new_coords1, pts_2[:, 0:2], 1)
     geom_match, nGeom = geom_match_to_vm(geom_dist, ind2.squeeze())
     ms1, matches1 = precesion(pts_1, pts_2, geom_match, depth_1, depth_2, H_batch)
     if draw:
@@ -445,34 +423,86 @@ def repeat(H_batch, K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1,
 
 
 def make_image_quad(img_1, img_2, pts_1, pts_2):
-    img_output = np.zeros(shape=(2 * IMG_SIZE[0], 2 * IMG_SIZE[1], 3), dtype=np.uint8)
+    size = img_1.shape[:2]
+    img_output = np.zeros(shape=(2 * size[0], 2 * size[1], 3), dtype=np.uint8)
     img_1 = np.repeat(np.expand_dims(img_1.astype('uint8'), axis=2), 3, axis=2)
     img_2 = np.repeat(np.expand_dims(img_2.astype('uint8'), axis=2), 3, axis=2)
-    img_output[:IMG_SIZE[0], :IMG_SIZE[1], :] = img_1
-    img_output[:IMG_SIZE[0], IMG_SIZE[1]:, :] = img_2
-    img_output[IMG_SIZE[0]:, :IMG_SIZE[1], :] = img_1
-    img_output[IMG_SIZE[0]:, IMG_SIZE[1]:, :] = img_2
-    draw_points(pts_1, img_output[:IMG_SIZE[0], :IMG_SIZE[1], :], iscolor=False)
-    draw_points(pts_2, img_output[:IMG_SIZE[0], IMG_SIZE[1]:, :], iscolor=False)
+    img_output[:size[0], :size[1], :] = img_1
+    img_output[:size[0], size[1]:, :] = img_2
+    img_output[size[0]:, :size[1], :] = img_1
+    img_output[size[0]:, size[1]:, :] = img_2
+    draw_points(pts_1, img_output[:size[0], :size[1], :], iscolor=False)
+    draw_points(pts_2, img_output[:size[0], size[1]:, :], iscolor=False)
     draw_points(pts_1, img_1, iscolor=False)
     draw_points(pts_2, img_2, iscolor=False)
 
-    img_output[:IMG_SIZE[0], :IMG_SIZE[1], :] = img_1
-    img_output[:IMG_SIZE[0], IMG_SIZE[1]:, :] = img_2
+    img_output[:size[0], :size[1], :] = img_1
+    img_output[:size[0], size[1]:, :] = img_2
     return img_output.copy()
 
 
 def run_all_snapshots():
+    sp = GoodPoint(dustbin=0,
+                   activation=torch.nn.ReLU(),
+                   batchnorm=batchnorm,
+                   grid_size=8,
+                   nms=nms).eval()
     best_f1 = 0.0
     best_path = None
     for f in os.listdir('.'):
         if f.endswith('.pt'):
-            current = loop(draw=False, weights=f, print_res=False)
+            current = loop(sp, weights=f)
             if best_f1 < current:
                 print('new best: {0}, f1: {1} '.format(f, current))
                 best_f1 = current
                 best_path = f
     print(best_path)
 
+
+def run_snapshot(model, loader, weights=PATH_WEIGHTS, draw=False, print_res=False, thres=conf_thresh):
+    model.load_state_dict(torch.load(weights, map_location=device)['superpoint'])
+    loop(model, loader, draw=draw, print_res=print_res, thresh=thres)
+
+
+def test_magicleap(loader):
+    from fem.wrapper import SuperPoint
+    sp_path = '/home/noskill/projects/neuro-fem/fem/superpoint_magicleap/superpoint_v1.pth'
+
+    sp = SuperPoint(nms).to(device)
+    sp.load_state_dict(torch.load(sp_path))
+    loop(sp, loader, thresh=0.015, draw=True)
+
+def test_distilled(loader):
+    from superpoint_05 import SuperPointNet
+    sp = SuperPointNet().eval()
+    path = '/home/noskill/projects/neuro-fem/fem/airsim_realsense_gpnt_model_last.pth'
+    sp.load_state_dict(torch.load(path, map_location=device))
+    sp.nms = MagicNMS()
+    loop(sp, loader, thresh=0.015, draw=False)
+
+def run_good(loader):
+    sp = GoodPoint(dustbin=0,
+                   activation=torch.nn.ReLU(),
+                   batchnorm=True,
+                   grid_size=8,
+                   nms=nms).eval()
+    run_snapshot(sp, loader, weights="./super400.pt", draw=True, print_res=True, thres=0.03525)
+
+
+
+dataset_village = AirsimIntVarDataset(**village, frame_offset=frame_offset)
+dataset_fantasy_village = AirsimIntVarDataset(**fantasy_village, frame_offset=frame_offset)
+
+
+village_loader = DataLoader(dataset_village, batch_size=batch_size, shuffle=False, num_workers=1)
+fantasy_loader = DataLoader(dataset_fantasy_village, batch_size=batch_size, shuffle=False, num_workers=1)
+
+
+# N = len(dataset)
+N = 100
 #run_all_snapshots()
-loop(draw=False)
+# test_distilled()
+test_magicleap(fantasy_loader)
+# run_good(fantasy_loader)
+
+

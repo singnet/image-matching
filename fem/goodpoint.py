@@ -69,6 +69,7 @@ class GoodPoint(nn.Module):
             self.batchnorm6 = l
             self.batchnorm7 = l
             self.batchnormDa = l
+            self.batchnormPb = l
             self.batchnormPa = l
         self.depth_to_space = DepthToSpace(grid_size)
         self.nms = nms
@@ -145,6 +146,12 @@ class GoodPoint(nn.Module):
         prob = torch.nn.functional.softmax(semi, dim=1)
         expanded = self.expand_results(self.depth_to_space, prob)
         return expanded, desc
+
+    def heatmap(self, x):
+        expanded, desc = self.forward(x)
+        if expanded.shape[1] == 2:
+            return expanded[:, 1]
+        return expanded
 
 
     def points_desc(self, x, threshold=0.5):
