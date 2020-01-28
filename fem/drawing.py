@@ -20,7 +20,7 @@ def draw_points(pts, img, iscolor=True):
     return img
 
 
-def show_points(img, points, name, scale=1):
+def show_points(img, points, name, scale=1, save_path=None):
     if len(img.shape) == 2:
         img = numpy.ascontiguousarray(numpy.stack([img, img, img]).transpose(1, 2, 0))
     for pt in points:
@@ -28,6 +28,8 @@ def show_points(img, points, name, scale=1):
         cv2.circle(img, tuple(pt), 2, color=(0, 255, 0), thickness=2)
     img = cv2.resize(img, dsize=None, fx=scale, fy=scale)
     cv2.imshow(name, img)
+    if save_path:
+        cv2.imwrite(save_path, img)
     cv2.waitKey(500)
 
 
