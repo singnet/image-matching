@@ -104,8 +104,6 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
             loss_points = -logprob2[means.long()[:,0], means.long()[:,1]].mean()
             in_bounds, coords1 = util.project_points(H_inv, None, means)
             if numpy.prod(coords1.shape):
-                if len(coords1.shape) == 1:
-                    coords1 = coords1.unsqueeze(0)
                 loss_points = loss_points / 2.0 - logprob2[coords1[:, 0], coords1[:, 1]].mean()
             else:
                 loss_points = (-logprob1[numpy_nonzero(point1_mask)] * (reward)).mean()
@@ -196,7 +194,7 @@ def compute_loss_hom_det(heatmap1, heatmap2, batch, point_mask1,
     return result
 
 
-def compute_det_diff(H, H_inv, heatmap1, heatmap2, mask2):
+def compute_det_diff(H, H_inv, heatmap1, heatmap2, mask2, weight=2000):
     assert len(heatmap1.shape) == 2
     reproj = hom.bilinear_sampling(heatmap2.unsqueeze(2).clone(), H_inv,
                                    h_template=heatmap2.shape[0],
@@ -222,8 +220,8 @@ def compute_det_diff(H, H_inv, heatmap1, heatmap2, mask2):
                                       h_template=heatmap2.shape[0],
                                       w_template=heatmap2.shape[1],
                                       to_numpy=False, mode='bilinear').to(heatmap1)
-    det_diff = ((reproj[numpy_nonzero(mask2proj)] - heat1proj[numpy_nonzero(mask2proj)]) ** 2 * 2000).mean() + \
-               ((forward_proj[numpy_nonzero(mask2)] - heat2proj[numpy_nonzero(mask2)]) ** 2 * 2000).mean()
+    det_diff = ((reproj[numpy_nonzero(mask2proj)] - heat1proj[numpy_nonzero(mask2proj)]) ** 2 * weight).mean() + \
+               ((forward_proj[numpy_nonzero(mask2)] - heat2proj[numpy_nonzero(mask2)]) ** 2 * weight).mean()
     return det_diff
 
 

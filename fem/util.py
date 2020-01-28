@@ -17,8 +17,6 @@ def init_weights(self):
     self.apply(init_weights)
 
 
-
-
 def numpy_nonzero(tensor):
     if isinstance(tensor, numpy.ndarray):
         return tensor.nonzero()
@@ -506,15 +504,22 @@ def project3d(K1, K2, depth1, keypoints, pose1, pose2):
     return new_coords1
 
 
-def geom_match(keypoints, keypoints2):
-    import sklearn
-    if isinstance(keypoints2, torch.Tensor):
-        keypoints2 = keypoints2.cpu()
-        keypoints = keypoints.cpu()
-    tree = sklearn.neighbors.KDTree(keypoints2,
-                                    leaf_size=6)
-    geom_dist, ind1 = tree.query(keypoints)
-    return geom_dist, ind1
+def geom_match(points1, points2, num=10):
+
+    if isinstance(points2, torch.Tensor):
+        points2 = points2.cpu()
+        points1 = points1.cpu()
+
+    # match geometrically
+    # fit(points2)
+    tree = sklearn.neighbors.KDTree(points2,
+                            leaf_size=6)
+
+
+    # mapping points1projected -> points2
+    # query(points1)
+    geom_dist, ind2 = tree.query(points1, min(len(points1), num))
+    return geom_dist, ind2
 
 
 def project_points(H, point_mask, points):
@@ -529,20 +534,13 @@ def project_points(H, point_mask, points):
                                                                              point_mask.flatten().nonzero().squeeze()] * in_bounds.to(
             point_mask)
     points1projected = points1projected[in_bounds.nonzero()].squeeze()
+    if numpy.prod(points1projected.shape):
+        if len(points1projected.shape) == 1:
+            points1projected = points1projected.unsqueeze(0)
     return in_bounds, points1projected
 
 
-def geom_match(points1, points2, num=10):
-    # match geometrically
-    # fit(points2)
-    tree = sklearn.neighbors.KDTree(points2.cpu(),
-                            leaf_size=6)
 
-
-    # mapping points1projected -> points2
-    # query(points1)
-    geom_dist, ind2 = tree.query(points1.cpu(), min(len(points1), num))
-    return geom_dist, ind2
 
 
 def get_points_in_bounds(in_bounds, points, points1projected):
