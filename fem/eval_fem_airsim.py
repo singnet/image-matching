@@ -198,7 +198,7 @@ def wrap_features(pts, desc):
 c = 0
 
 
-def precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch):
+def precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch, img_size):
     matches222 = np.zeros((3, len(vM)))
     # print("NMATCHES:", matches.shape[1])
     for i in range(len(vM)):
@@ -212,8 +212,8 @@ def precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch):
             H4x4[m * 4 + n] = float(H_batch[m, n])
     vdepth1 = evw.std_vector_float()
     vdepth2 = evw.std_vector_float()
-    for m in range(IMG_SIZE[0]):
-        for n in range(IMG_SIZE[1]):
+    for m in range(img_size[0]):
+        for n in range(img_size[1]):
             vdepth1.append(float(depth_1[m, n]))
             vdepth2.append(float(depth_2[m, n]))
     vKm1 = evw.VKEYPOINT()
@@ -230,7 +230,7 @@ def precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch):
         p.flY = float(pts_2[idx2, 0])
         vKm2.append(p)
 
-    ms = evw.calculateRepeatabilityAirsim(IMG_SIZE[1], IMG_SIZE[0], H4x4, vdepth1, vdepth2,
+    ms = evw.calculateRepeatabilityAirsim(img_size[1], img_size[0], H4x4, vdepth1, vdepth2,
                                           vKm1, vKm2, size)
 
     return ms, matches222
@@ -279,6 +279,7 @@ def loop(sp, loader, draw=True, print_res=True, thresh=conf_thresh):
 
             img_1 = img_1_batch[j, :, :]
             img_2 = img_2_batch[j, :, :]
+            img_size = img_1.shape
             depth_1 = depth_1_batch[j, :, :]
             depth_2 = depth_2_batch[j, :, :]
 
@@ -351,18 +352,18 @@ def loop(sp, loader, draw=True, print_res=True, thresh=conf_thresh):
                 continue
 
             if nMatches >= 1:
-                ms, matches = precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch[j])
+                ms, matches = precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch[j], img_size)
                 if draw:
-                    draw_matches(matches, pts_1, pts_2, img_output[IMG_SIZE[0]:, :, :])
+                    draw_matches(matches, pts_1, pts_2, img_output[img_size[0]:, :, :])
                 precinv = 1 - float(ms.nMatches) / float(nMatches)
                 if print_res:
                     print("%i/%i\trecall: %f\tnMatches: %i\tTime: %f" % (nCases, N, ms.recall, ms.nMatches, t2 - t1))
                 meanPrecisionInv += precinv
                 meanRecall += 0.5 * ms.recall
             if nMatches1 >= 1:
-                ms2, matches2 = precesion(pts_2, pts_1, vM1, depth_2, depth_1, np.linalg.inv(H_batch[j]))
+                ms2, matches2 = precesion(pts_2, pts_1, vM1, depth_2, depth_1, np.linalg.inv(H_batch[j]), img_size)
                 if draw:
-                    draw_matches(matches2, pts_2, pts_1, img_output2[IMG_SIZE[0]:, :, :])
+                    draw_matches(matches2, pts_2, pts_1, img_output2[img_size[0]:, :, :])
                 if print_res:
                     print("%i/%i\trecall: %f\tnMatches: %i\tTime: %f" % (nCases, N, ms2.recall, ms2.nMatches, t2 - t1))
                     print('\n')
@@ -401,10 +402,9 @@ def loop(sp, loader, draw=True, print_res=True, thresh=conf_thresh):
     mrecall = meanRecall / float(nCases)
     mrepeat = repeatability / float(nCases)
     f1 = 2 * mrecall * mrepeat / (mrecall + mrepeat)
-    if print_res:
-        print("Mean recall: {0}".format(mrecall))
-        print("Repeatability: {0}".format(mrepeat))
-        print("F1: {0}".format(f1))
+    print("Mean recall: {0}".format(mrecall))
+    print("Repeatability: {0}".format(mrepeat))
+    print("F1: {0}".format(f1))
     return f1
 
 
@@ -412,7 +412,7 @@ def repeat(H_batch, K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1,
     new_coords1 = util.project3d(K1, K2, depth_1, pts_1[:, 0:2].astype(np.int32), pose1, pose2)
     geom_dist, ind2 = util.geom_match(new_coords1, pts_2[:, 0:2], 1)
     geom_match, nGeom = geom_match_to_vm(geom_dist, ind2.squeeze())
-    ms1, matches1 = precesion(pts_1, pts_2, geom_match, depth_1, depth_2, H_batch)
+    ms1, matches1 = precesion(pts_1, pts_2, geom_match, depth_1, depth_2, H_batch, img_size=img_1.shape)
     if draw:
         img_output1 = make_image_quad(img_1, img_2, pts_1, pts_2)
         draw_matches(matches1, pts_1, pts_2, img_output1[IMG_SIZE[0]:, :, :])
@@ -423,21 +423,21 @@ def repeat(H_batch, K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1,
 
 
 def make_image_quad(img_1, img_2, pts_1, pts_2):
-    size = img_1.shape[:2]
-    img_output = np.zeros(shape=(2 * size[0], 2 * size[1], 3), dtype=np.uint8)
+    img_size = img_1.shape[:2]
+    img_output = np.zeros(shape=(2 * img_size[0], 2 * img_size[1], 3), dtype=np.uint8)
     img_1 = np.repeat(np.expand_dims(img_1.astype('uint8'), axis=2), 3, axis=2)
     img_2 = np.repeat(np.expand_dims(img_2.astype('uint8'), axis=2), 3, axis=2)
-    img_output[:size[0], :size[1], :] = img_1
-    img_output[:size[0], size[1]:, :] = img_2
-    img_output[size[0]:, :size[1], :] = img_1
-    img_output[size[0]:, size[1]:, :] = img_2
-    draw_points(pts_1, img_output[:size[0], :size[1], :], iscolor=False)
-    draw_points(pts_2, img_output[:size[0], size[1]:, :], iscolor=False)
+    img_output[:img_size[0], :img_size[1], :] = img_1
+    img_output[:img_size[0], img_size[1]:, :] = img_2
+    img_output[img_size[0]:, :img_size[1], :] = img_1
+    img_output[img_size[0]:, img_size[1]:, :] = img_2
+    draw_points(pts_1, img_output[:img_size[0], :img_size[1], :], iscolor=False)
+    draw_points(pts_2, img_output[:img_size[0], img_size[1]:, :], iscolor=False)
     draw_points(pts_1, img_1, iscolor=False)
     draw_points(pts_2, img_2, iscolor=False)
 
-    img_output[:size[0], :size[1], :] = img_1
-    img_output[:size[0], size[1]:, :] = img_2
+    img_output[:img_size[0], :img_size[1], :] = img_1
+    img_output[:img_size[0], img_size[1]:, :] = img_2
     return img_output.copy()
 
 
@@ -486,7 +486,7 @@ def run_good(loader):
                    batchnorm=True,
                    grid_size=8,
                    nms=nms).eval()
-    run_snapshot(sp, loader, weights="./super400.pt", draw=True, print_res=True, thres=0.03525)
+    run_snapshot(sp, loader, weights="./super3500.pt", draw=False, print_res=False, thres=0.03525)
 
 
 
@@ -498,11 +498,11 @@ village_loader = DataLoader(dataset_village, batch_size=batch_size, shuffle=Fals
 fantasy_loader = DataLoader(dataset_fantasy_village, batch_size=batch_size, shuffle=False, num_workers=1)
 
 
-# N = len(dataset)
-N = 100
+N = len(dataset_village)
+# N = 100
 #run_all_snapshots()
 # test_distilled()
-test_magicleap(fantasy_loader)
-# run_good(fantasy_loader)
+# test_magicleap(fantasy_loader)
+run_good(fantasy_loader)
 
 
