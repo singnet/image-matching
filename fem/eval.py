@@ -96,12 +96,6 @@ def run_good(loader):
                    grid_size=8,
                    nms=nms).eval()
     sp.load_state_dict(torch.load(weight, map_location=device)['superpoint'])
-    model_desc = GoodPoint(dustbin=0,
-                   activation=torch.nn.ReLU(),
-                   batchnorm=True,
-                   grid_size=8,
-                   nms=nms).eval().to(device)
-    model_desc.load_state_dict(torch.load(PATH_WEIGHTS, map_location=device)['superpoint'])
     loop(sp, loader, draw=True, print_res=True, thresh=0.1295525, desc_model=None)
     print('test goodpoint {0} completed'.format(weight))
 

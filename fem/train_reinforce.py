@@ -2,17 +2,14 @@ import sys
 
 from collections import defaultdict
 import ignite
-import torch
 
 import torch.optim as optim
-from fem.reinf_utils import threshold_nms, sample
+from fem.reinf_utils import threshold_nms, threshold_nms_dense
 from torch.utils.data import DataLoader
 
 from fem.dataset import SynteticShapes, Mode, ColorMode
 from fem.transform import *
 from fem import util
-
-from fem.hom import HomographySamplerTransformer
 
 from ignite.engine import Engine
 from fem.goodpoint import GoodPoint
@@ -20,8 +17,7 @@ from fem.goodpoint import GoodPoint
 import numpy
 
 from fem.loss_reinf import compute_loss_hom_det
-
-
+from fem.noise_transformer import NoisyTransformWithResize
 
 gtav_super = '/mnt/fileserver/shared/datasets/from_games/GTAV_super/01_images'
 coco_super = '/mnt/fileserver/shared/datasets/SLAM_DATA/hpatches-dataset/COCO_super/'
@@ -33,8 +29,7 @@ dir_night = '/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/00_night_
 poses_file = '/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/village_00.json'
 
 
-from fem.training import train_loop, TransformWithResize, TransformWithResizeThreshold, \
-    make_noisy_transformers, test, exponential_lr
+from fem.training import train_loop, test, exponential_lr
 
 
 def setup_engine(Engine, train, model, device, optimizer, scheduler,
@@ -79,7 +74,7 @@ def train_points_reinf(batch, model, optimizer, scheduler, device, function, cou
     optimizer.step()
     scheduler.step()
     result = {k: v.cpu().detach().numpy() for (k,v) in out.items()}
-    result['lr'] = scheduler.get_lr()
+    result['lr'] = scheduler.get_last_lr()
     sys.stdout.flush()
 
     count[0] += 1
@@ -179,34 +174,33 @@ def train_super():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print('using device {0}'.format(device))
     lr = 0.0005
-    epochs = 5
+    epochs = 1
     weight_decay = 0.005
     aggregate = False
     if aggregate:
         batch_size = 1
 
 
-    super_file = "./super4100.pt"
-    # super_file = "./snapshots/super.snap.4.pt"
+    super_file = "./snapshots/super12300.pt"
 
 
     state_dict = torch.load(super_file, map_location=device)
     sp = GoodPoint(activation=torch.nn.ReLU(), grid_size=8,
                batchnorm=True, dustbin=0).to(device)
-    # detector_layer_names = ('convPa', 'convPb', 'batchnormPa', 'batchnormPb')
+
+    #desc_model = GoodPoint(activation=torch.nn.ReLU(), grid_size=8,
+    #       batchnorm=True, dustbin=0).to(device)
+
     print("loading weights from {0}".format(super_file))
-    # to_pop = [k for k in state_dict['superpoint'] if k.startswith(detector_layer_names)]
-    # print("reset: {0}".format(to_pop))
-    # for p in to_pop:
-    #    state_dict['superpoint'].pop(p)
+
     sp.load_state_dict(state_dict['superpoint'], strict=True)
+    #desc_model.load_state_dict(state_dict['superpoint'], strict=True)
     print("loading optimizer")
     optimizer = optim.RMSprop(sp.parameters(), lr=lr, weight_decay=weight_decay)
+    optimizer.load_state_dict(state_dict['optimizer'])
     state_dict['optimizer']['param_groups'][0]['lr'] = lr
     state_dict['optimizer']['param_groups'][0]['initial_lr'] = lr
-
-    optimizer.load_state_dict(state_dict['optimizer'])
-
+    state_dict['optimizer']['param_groups'][0]['weight_decay'] = weight_decay
 
     decay_rate = 0.9
     decay_steps = 1000
@@ -259,64 +253,6 @@ class NmsImgTransform:
         return target
 
 
-def collate(list_of_dicts):
-    keys = list_of_dicts[0].keys()
-    result = {key: torch.stack([item[key] for item in list_of_dicts]) for key in keys}
-    return result
-
-
-def to_torch(kwargs):
-    return {k: (torch.from_numpy(v) if not isinstance(v, torch.Tensor) else v) for (k, v) in kwargs.items()}
-
-
-class NoisyTransformWithResize(TransformCompose):
-    def __init__(self, num=1):
-        from fem import noise
-        from fem.training import make_noisy_transformers
-        self.noisy = make_noisy_transformers()
-
-        self.imgcrop = noise.RandomCropTransform(size=256, beta=0)
-        self.resize = noise.Resize((256, 256))
-        self.to_tensor = ToTensor()
-        self.homography = HomographySamplerTransformer(num=1,
-                                                  beta=14,
-                                                  theta=0.08,
-                                                  random_scale_range=(0.8, 1.3),
-                                                  perspective=65)
-        self.num = num
-
-    def __call__(self, data=None, target=None):
-        # crop
-        image, pos = self.imgcrop(data, return_pos=True)
-        resized = self.resize(image)
-        img = self.to_tensor(resized)
-        tmp = []
-        if self.num == 1:
-            return self.sample(img)
-        for i in range(self.num):
-            tmp.append(to_torch(self.sample(img)))
-        result = collate(tmp)
-        result['img1'] = result['img1'][0]
-        return result
-
-    def sample(self, x):
-        # x is batch 1, h, w
-        self.homography.sample_fixed_homography(h=x.shape[-2], w=x.shape[-1])
-        # apply noise to source image before sample
-        to_sample = self.noisy(x.permute(1, 2, 0).cpu().numpy()).permute(2, 0, 1)
-        template, hom, mask = self.homography(to_sample.permute(1, 2, 0))
-        # use different noise for training
-        source = self.noisy(x.permute(1, 2, 0).cpu().numpy())
-        #import pdb;pdb.set_trace()
-        #import cv2
-        #cv2.imshow('template[1]', template[1] / 256. * mask[0][..., numpy.newaxis])
-        #cv2.imshow('source', (source / 256.).numpy())
-        #cv2.waitKey(100)
-        return dict(img1=source.squeeze(), img2=torch.from_numpy(template[1].squeeze()),
-                    H=torch.from_numpy(hom[0][0:3]), H_inv=hom[0][3:6], mask=mask)
-
-
-
 def get_loaders(batch_size, test_batch_size, num):
     from fem.airsim_dataset import AirsimWithTarget
     frame_offset=5
@@ -324,11 +260,11 @@ def get_loaders(batch_size, test_batch_size, num):
                                      transform=NmsImgTransform())
 
     coco_dataset = SynteticShapes(coco_super, Mode.training,
-                              transform=NoisyTransformWithResize(num),
-                              color=ColorMode.GREY)
+                                  transform=NoisyTransformWithResize(num),
+                                  color=ColorMode.GREY)
     synth_dataset = SynteticShapes(synth_path, Mode.training,
-                              transform=NoisyTransformWithResize(num),
-                                    color=ColorMode.GREY)
+                                   transform=NoisyTransformWithResize(num),
+                                   color=ColorMode.GREY)
     coco_dataset.shuffle()
     train_loader = DataLoader(train_dataset,
                              batch_size=batch_size,
