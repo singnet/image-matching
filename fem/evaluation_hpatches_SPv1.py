@@ -1,4 +1,6 @@
 import numpy as np
+import numpy
+import util
 import cv2, os
 import sys
 import random
@@ -20,13 +22,13 @@ ld = sorted(listdir(dataset_root))
 
 PATH_WEIGHTS = "./superpoint_magicleap/superpoint_v1.pth"
 fe = None
-# fe = SuperPointFrontend(weights_path=PATH_WEIGHTS,
-#                           nms_dist= 4,
-#                           conf_thresh= 0.1,
-#                           nn_thresh= 0.5,
-#                           cuda=True)
+#fe = SuperPointFrontend(weights_path=PATH_WEIGHTS,
+#                          nms_dist= 4,
+#                          conf_thresh= 0.025,
+#                          nn_thresh= 0.5,
+#                          cuda=True)
 weight = "./snapshots/super1600.pt"
-nms = MagicNMS(nms_dist=4)
+nms = MagicNMS(nms_dist=8)
 
 device = 'cuda'
 sp = GoodPoint(dustbin=0,
@@ -36,7 +38,7 @@ sp = GoodPoint(dustbin=0,
                nms=nms).eval().to(device)
 
 sp.load_state_dict(torch.load(weight, map_location=device)['superpoint'])
-thresh=0.05295525
+thresh=0.056295525
 
 
 nn_thresh = 0.8
@@ -85,6 +87,7 @@ for d in range(len(ld)):
     else:
         pts_1, desc_1 = sp.to(device).points_desc(torch.from_numpy(timg1).to(device), threshold=thresh)
         pts_1 = pts_1.T
+        pts_1 = numpy.concatenate([util.swap_rows(pts_1[:2]), pts_1[2, :][numpy.newaxis,:]])
         desc_1 = desc_1[0].T.cpu().detach().numpy()
     fReplicatedRatioMean = 0
     for n in range(1, N):
@@ -107,6 +110,7 @@ for d in range(len(ld)):
             pts_2, desc_2 = sp.to(device).points_desc(torch.from_numpy(timg2).to(device), threshold=thresh)
             pts_2 = pts_2.T
             desc_2 = desc_2[0].T.cpu().detach().numpy()
+            pts_2 = numpy.concatenate([util.swap_rows(pts_2[:2]), pts_2[2, :][numpy.newaxis,:]])
         nCasesTotal += 1
 
 
@@ -137,10 +141,11 @@ for d in range(len(ld)):
         dx = pt2_p[0, :] - pt2[0, :]
         dy = pt2_p[1, :] - pt2[1, :]
         err = np.sqrt(dx * dx + dy * dy)
+
         for i in range(nMatches):
             if err[i] <= GOOD_MATCH_THRESHOLD:
                 nGoodMatches += 1
-
+                matches[2, i] = 0
         accuracy = float(nGoodMatches) / float(nMatches)
 
         if is_attribs:
@@ -181,7 +186,7 @@ for d in range(len(ld)):
                 dx = pts_2_r[0, j] - pt2_p[0, i]
                 dy = pts_2_r[1, j] - pt2_p[1, i]
                 err = np.sqrt(dx * dx + dy * dy)
-                if err <= 3:
+                if err <= GOOD_MATCH_THRESHOLD:
                     nReplicated += 1
                     match_found = True
                     break
@@ -197,23 +202,22 @@ for d in range(len(ld)):
         print("%i\t\tdir: %s\t\t'Replication ratio: %f'\t\tnMatches: %i\tnGoodMatches: %i\t\tMatching accuracy: %f" %
               (nCasesTotal, dir, fReplicatedRatio, nMatches, nGoodMatches, accuracy))
 
-        img_output = np.zeros(shape=(2 * IMG_SIZE_MAX[0], img_1_src.shape[1] + img_2_src.shape[1], 3), dtype=np.uint8)
-        img_1c = np.repeat(np.expand_dims(img_1.astype('uint8'), axis=2), 3, axis=2)
-        img_2 = np.repeat(np.expand_dims(img_2.astype('uint8'), axis=2), 3, axis=2)
+       # img_output = np.zeros(shape=(2 * IMG_SIZE_MAX[0], img_1_src.shape[1] + img_2_src.shape[1], 3), dtype=np.uint8)
+       # img_1c = np.repeat(np.expand_dims(img_1.astype('uint8'), axis=2), 3, axis=2)
+       # img_2 = np.repeat(np.expand_dims(img_2.astype('uint8'), axis=2), 3, axis=2)
 
-        img_output[IMG_SIZE_MAX[0]:IMG_SIZE_MAX[0]+img_1_src.shape[0], :img_1_src.shape[1], :] = img_1c
-        img_output[IMG_SIZE_MAX[0]:IMG_SIZE_MAX[0]+img_2_src.shape[0], img_1_src.shape[1]:, :] = img_2
-
-        # vis_utils.draw_matches(matches, pts_1, pts_2, img_output[IMG_SIZE_MAX[0]:, :, :], img_1_src.shape[1])
+       # img_output[IMG_SIZE_MAX[0]:IMG_SIZE_MAX[0]+img_1_src.shape[0], :img_1_src.shape[1], :] = img_1c
+       # img_output[IMG_SIZE_MAX[0]:IMG_SIZE_MAX[0]+img_2_src.shape[0], img_1_src.shape[1]:, :] = img_2
+       # import drawing
+       # drawing.draw_matches(matches, pts_1, pts_2, img_output[IMG_SIZE_MAX[0]:, :, :])
         # vis_utils.draw_points(pts_1, img_1c, iscolor=False)
         # vis_utils.draw_points(pts_2, img_2, iscolor=False)
 
-        img_output[:img_1_src.shape[0], :img_1_src.shape[1], :] = img_1c
-        img_output[:img_2_src.shape[0], img_1_src.shape[1]:, :] = img_2
         c = 5
-        cv2.imshow('', img_output[IMG_SIZE_MAX[0]:, :, :])
-        c = cv2.waitKey(10)
-
+        #img_output[:img_1_src.shape[0], :img_1_src.shape[1], :] = img_1c
+       # img_output[:img_2_src.shape[0], img_1_src.shape[1]:, :] = img_2
+       # cv2.imshow('', img_output[IMG_SIZE_MAX[0]:, :, :])
+       # c = cv2.waitKey(10)
         if c == 1048603:
             break_flag = True
             break
@@ -235,3 +239,4 @@ print("Mean Light Replication: %f\tMean View Replication: %f\tMean Light Accurac
       (meanLightReplication, meanViewReplication, meanLightAccuracy, meanViewAccuracy) )
 
 
+print('threshold: {0}'.format(GOOD_MATCH_THRESHOLD))
