@@ -4,68 +4,17 @@ from wrappers import eval_airsim_wrapper as evw
 import numpy as np
 import cv2, os
 import random
-from os import listdir
-from os.path import isfile, join
+
 from itertools import count
 import time
-from torch import nn
-from torch.utils.data import Dataset, DataLoader
-from airsim_dataset import AirsimIntVarDataset
-from fem.goodpoint import GoodPoint
+
 import torch
-from fem.nonmaximum import PoolingNms, MagicNMS
+
 from fem import util
 from scipy.special import expit
 
 
 PATH_SAVE = "/tmp/village_00_320x240_day_night_SP_fem_my"
-
-village = dict(dir_day = '/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/00_day_light',
-               dir_night ='/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/00_night_light',
-               poses_file ='/mnt/fileserver/shared/datasets/AirSim/village_00_320x240/village_00.json')
-
-fantasy_village = dict(dir_day = '/mnt/fileserver/shared/datasets/AirSim/fantasy_village_362x362/00_day_light/',
-               dir_night ='/mnt/fileserver/shared/datasets/AirSim/fantasy_village_362x362/00_day_light_fog/',
-               poses_file ='/mnt/fileserver/shared/datasets/AirSim/fantasy_village_362x362/00_day_light_fog/fantasy_village_00.json')
-
-
-PATH_SAVE_PTS = PATH_SAVE + '/data/'
-
-magicleap_file = "superpoint_magicleap/superpoint_v1.pth"
-magicleap_file = None
-
-PATH_WEIGHTS = None
-
-
-PATH_WEIGHTS = "snapshots/super16000.pt"
-PATH_WEIGHTS = "./snapshots/super12300.pt"
-
-
-#PATH_WEIGHTS = "./snapshots/TWD/tr_0.5_dr_0.4/from_scratch_super17.pt"
-#PATH_WEIGHTS = "./snapshots/TWD/tr_0.5_dr_0.4/super8.pt"
-
-
-batchnorm=True
-IMG_SIZE = [240, 320]
-
-
-
-conf_thresh= 0.020885
-conf_thresh= 0.0455591090510123100629
-if PATH_WEIGHTS == "snapshots/super.snap.4.pt":
-    conf_thresh = 0.15
-
-
-
-batchnorm = True
-# from superpoint_magicleap.demo_superpoint import SuperPointFrontend
-# sp_magic = SuperPointFrontend(weights_path="superpoint_magicleap/superpoint_v1.pth",
-#                            nms_dist=8,conf_thresh=conf_thresh, nn_thresh=0.3)
-
-nms = MagicNMS()
-
-
-
 RESIZE = False
 SAVE_RESULT = False
 if RESIZE:
@@ -106,19 +55,6 @@ size = int(3)
 
 correspCount = int(0)
 
-
-frame_offset = 5
-batch_size = 1
-
-
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-
-print("using device {0}".format(device))
-
-
-sp_magic = None
 
 
 
@@ -198,7 +134,7 @@ def wrap_features(pts, desc):
 c = 0
 
 
-def precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch):
+def precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch, img_size):
     matches222 = np.zeros((3, len(vM)))
     # print("NMATCHES:", matches.shape[1])
     for i in range(len(vM)):
@@ -212,8 +148,8 @@ def precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch):
             H4x4[m * 4 + n] = float(H_batch[m, n])
     vdepth1 = evw.std_vector_float()
     vdepth2 = evw.std_vector_float()
-    for m in range(IMG_SIZE[0]):
-        for n in range(IMG_SIZE[1]):
+    for m in range(img_size[0]):
+        for n in range(img_size[1]):
             vdepth1.append(float(depth_1[m, n]))
             vdepth2.append(float(depth_2[m, n]))
     vKm1 = evw.VKEYPOINT()
@@ -230,7 +166,7 @@ def precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch):
         p.flY = float(pts_2[idx2, 0])
         vKm2.append(p)
 
-    ms = evw.calculateRepeatabilityAirsim(IMG_SIZE[1], IMG_SIZE[0], H4x4, vdepth1, vdepth2,
+    ms = evw.calculateRepeatabilityAirsim(img_size[1], img_size[0], H4x4, vdepth1, vdepth2,
                                           vKm1, vKm2, size)
 
     return ms, matches222
@@ -260,13 +196,15 @@ def geom_match_to_vm(geom_dist, ind2):
     return matches, len(matches)
 
 
-def loop(sp, loader, draw=True, print_res=True, thresh=conf_thresh):
+def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=None, device='cuda'):
     fe = sp.to(device)
     nCases = 0
     meanTime = 0
     meanRecall = 0.
     meanPrecisionInv = 0.
     repeatability = 0.
+    if N is None:
+        N = len(loader)
     c = 0
     for i_batch, sample in enumerate(loader):
         img_1_batch = sample['img1'].numpy()
@@ -275,10 +213,11 @@ def loop(sp, loader, draw=True, print_res=True, thresh=conf_thresh):
         depth_2_batch = sample['depth2'].numpy()
         H_batch = sample['H'].numpy()
         nCases += 1
-        for j in range(batch_size):
+        for j in range(1):
 
             img_1 = img_1_batch[j, :, :]
             img_2 = img_2_batch[j, :, :]
+            img_size = img_1.shape
             depth_1 = depth_1_batch[j, :, :]
             depth_2 = depth_2_batch[j, :, :]
 
@@ -290,8 +229,8 @@ def loop(sp, loader, draw=True, print_res=True, thresh=conf_thresh):
 
             pts_1, desc_1_ = fe.points_desc(torch.from_numpy(timg1).to(device), threshold=thresh)
 
-            if sp_magic:
-                heatmap, desc_crude = sp_magic.forward(torch.from_numpy(timg1).to(device) / 255.0)
+            if desc_model:
+                heatmap, desc_crude = desc_model.forward(torch.from_numpy(timg1).to(device) / 255.0)
                 desc_1_ = util.descriptor_interpolate(desc_crude[0],
                                                     240,
                                                     320,
@@ -304,8 +243,8 @@ def loop(sp, loader, draw=True, print_res=True, thresh=conf_thresh):
             meanTime = meanTime + (t2 - t1)
 
             pts_2, desc_2_ = fe.points_desc(torch.from_numpy(timg2).to(device), threshold=thresh)
-            if sp_magic:
-                heatmap, desc_crude2 = sp_magic.forward(torch.from_numpy(timg2).to(device) / 255.0)
+            if desc_model:
+                heatmap, desc_crude2 = desc_model.forward(torch.from_numpy(timg2).to(device) / 255.0)
                 desc_2_ = util.descriptor_interpolate(desc_crude2[0],
                                                     240,
                                                     320,
@@ -351,18 +290,18 @@ def loop(sp, loader, draw=True, print_res=True, thresh=conf_thresh):
                 continue
 
             if nMatches >= 1:
-                ms, matches = precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch[j])
+                ms, matches = precesion(pts_1, pts_2, vM, depth_1, depth_2, H_batch[j], img_size)
                 if draw:
-                    draw_matches(matches, pts_1, pts_2, img_output[IMG_SIZE[0]:, :, :])
+                    draw_matches(matches, pts_1, pts_2, img_output[img_size[0]:, :, :])
                 precinv = 1 - float(ms.nMatches) / float(nMatches)
                 if print_res:
                     print("%i/%i\trecall: %f\tnMatches: %i\tTime: %f" % (nCases, N, ms.recall, ms.nMatches, t2 - t1))
                 meanPrecisionInv += precinv
                 meanRecall += 0.5 * ms.recall
             if nMatches1 >= 1:
-                ms2, matches2 = precesion(pts_2, pts_1, vM1, depth_2, depth_1, np.linalg.inv(H_batch[j]))
+                ms2, matches2 = precesion(pts_2, pts_1, vM1, depth_2, depth_1, np.linalg.inv(H_batch[j]), img_size)
                 if draw:
-                    draw_matches(matches2, pts_2, pts_1, img_output2[IMG_SIZE[0]:, :, :])
+                    draw_matches(matches2, pts_2, pts_1, img_output2[img_size[0]:, :, :])
                 if print_res:
                     print("%i/%i\trecall: %f\tnMatches: %i\tTime: %f" % (nCases, N, ms2.recall, ms2.nMatches, t2 - t1))
                     print('\n')
@@ -401,10 +340,9 @@ def loop(sp, loader, draw=True, print_res=True, thresh=conf_thresh):
     mrecall = meanRecall / float(nCases)
     mrepeat = repeatability / float(nCases)
     f1 = 2 * mrecall * mrepeat / (mrecall + mrepeat)
-    if print_res:
-        print("Mean recall: {0}".format(mrecall))
-        print("Repeatability: {0}".format(mrepeat))
-        print("F1: {0}".format(f1))
+    print("Mean recall: {0}".format(mrecall))
+    print("Repeatability: {0}".format(mrepeat))
+    print("F1: {0}".format(f1))
     return f1
 
 
@@ -412,10 +350,10 @@ def repeat(H_batch, K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1,
     new_coords1 = util.project3d(K1, K2, depth_1, pts_1[:, 0:2].astype(np.int32), pose1, pose2)
     geom_dist, ind2 = util.geom_match(new_coords1, pts_2[:, 0:2], 1)
     geom_match, nGeom = geom_match_to_vm(geom_dist, ind2.squeeze())
-    ms1, matches1 = precesion(pts_1, pts_2, geom_match, depth_1, depth_2, H_batch)
+    ms1, matches1 = precesion(pts_1, pts_2, geom_match, depth_1, depth_2, H_batch, img_size=img_1.shape)
     if draw:
         img_output1 = make_image_quad(img_1, img_2, pts_1, pts_2)
-        draw_matches(matches1, pts_1, pts_2, img_output1[IMG_SIZE[0]:, :, :])
+        draw_matches(matches1, pts_1, pts_2, img_output1[img_1.shape[0]:, :, :])
     # ms1.recall = True matches / Matches so it is precision
     # but if we have used ground truth for matching then it is
     # points recovered / points so it is recall
@@ -423,86 +361,19 @@ def repeat(H_batch, K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1,
 
 
 def make_image_quad(img_1, img_2, pts_1, pts_2):
-    size = img_1.shape[:2]
-    img_output = np.zeros(shape=(2 * size[0], 2 * size[1], 3), dtype=np.uint8)
+    img_size = img_1.shape[:2]
+    img_output = np.zeros(shape=(2 * img_size[0], 2 * img_size[1], 3), dtype=np.uint8)
     img_1 = np.repeat(np.expand_dims(img_1.astype('uint8'), axis=2), 3, axis=2)
     img_2 = np.repeat(np.expand_dims(img_2.astype('uint8'), axis=2), 3, axis=2)
-    img_output[:size[0], :size[1], :] = img_1
-    img_output[:size[0], size[1]:, :] = img_2
-    img_output[size[0]:, :size[1], :] = img_1
-    img_output[size[0]:, size[1]:, :] = img_2
-    draw_points(pts_1, img_output[:size[0], :size[1], :], iscolor=False)
-    draw_points(pts_2, img_output[:size[0], size[1]:, :], iscolor=False)
+    img_output[:img_size[0], :img_size[1], :] = img_1
+    img_output[:img_size[0], img_size[1]:, :] = img_2
+    img_output[img_size[0]:, :img_size[1], :] = img_1
+    img_output[img_size[0]:, img_size[1]:, :] = img_2
+    draw_points(pts_1, img_output[:img_size[0], :img_size[1], :], iscolor=False)
+    draw_points(pts_2, img_output[:img_size[0], img_size[1]:, :], iscolor=False)
     draw_points(pts_1, img_1, iscolor=False)
     draw_points(pts_2, img_2, iscolor=False)
 
-    img_output[:size[0], :size[1], :] = img_1
-    img_output[:size[0], size[1]:, :] = img_2
+    img_output[:img_size[0], :img_size[1], :] = img_1
+    img_output[:img_size[0], img_size[1]:, :] = img_2
     return img_output.copy()
-
-
-def run_all_snapshots():
-    sp = GoodPoint(dustbin=0,
-                   activation=torch.nn.ReLU(),
-                   batchnorm=batchnorm,
-                   grid_size=8,
-                   nms=nms).eval()
-    best_f1 = 0.0
-    best_path = None
-    for f in os.listdir('.'):
-        if f.endswith('.pt'):
-            current = loop(sp, weights=f)
-            if best_f1 < current:
-                print('new best: {0}, f1: {1} '.format(f, current))
-                best_f1 = current
-                best_path = f
-    print(best_path)
-
-
-def run_snapshot(model, loader, weights=PATH_WEIGHTS, draw=False, print_res=False, thres=conf_thresh):
-    model.load_state_dict(torch.load(weights, map_location=device)['superpoint'])
-    loop(model, loader, draw=draw, print_res=print_res, thresh=thres)
-
-
-def test_magicleap(loader):
-    from fem.wrapper import SuperPoint
-    sp_path = '/home/noskill/projects/neuro-fem/fem/superpoint_magicleap/superpoint_v1.pth'
-
-    sp = SuperPoint(nms).to(device)
-    sp.load_state_dict(torch.load(sp_path))
-    loop(sp, loader, thresh=0.015, draw=True)
-
-def test_distilled(loader):
-    from superpoint_05 import SuperPointNet
-    sp = SuperPointNet().eval()
-    path = '/home/noskill/projects/neuro-fem/fem/airsim_realsense_gpnt_model_last.pth'
-    sp.load_state_dict(torch.load(path, map_location=device))
-    sp.nms = MagicNMS()
-    loop(sp, loader, thresh=0.015, draw=False)
-
-def run_good(loader):
-    sp = GoodPoint(dustbin=0,
-                   activation=torch.nn.ReLU(),
-                   batchnorm=True,
-                   grid_size=8,
-                   nms=nms).eval()
-    run_snapshot(sp, loader, weights="./super400.pt", draw=True, print_res=True, thres=0.03525)
-
-
-
-dataset_village = AirsimIntVarDataset(**village, frame_offset=frame_offset)
-dataset_fantasy_village = AirsimIntVarDataset(**fantasy_village, frame_offset=frame_offset)
-
-
-village_loader = DataLoader(dataset_village, batch_size=batch_size, shuffle=False, num_workers=1)
-fantasy_loader = DataLoader(dataset_fantasy_village, batch_size=batch_size, shuffle=False, num_workers=1)
-
-
-# N = len(dataset)
-N = 100
-#run_all_snapshots()
-# test_distilled()
-test_magicleap(fantasy_loader)
-# run_good(fantasy_loader)
-
-

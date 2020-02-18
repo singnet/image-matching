@@ -2,7 +2,7 @@ import numpy
 import torch
 from fem import util
 from torch.distributions import Categorical
-from fem.nonmaximum import PoolingNms1
+from fem.nonmaximum import PoolingNms1, PoolingNms
 
 def match_3d_second_to_first(points2, points1, _3d_data, mask1, mask2, img1=None, img2=None):
     K1 = _3d_data['K1'].cpu()
@@ -107,6 +107,19 @@ def test_small_mask(mask, new_mask):
 
 def threshold_nms(keypoints_prob, pool=8, take=50):
     nms = PoolingNms1(pool)
+    pooled = nms(keypoints_prob)
+    if take:
+        good_thresh = torch.sort(pooled.squeeze().reshape(pooled.shape[0],
+                                                          numpy.prod(pooled.shape[1:])), dim=1)[0][:, -take:].min(dim=1)[0]
+        good_thresh = torch.max(good_thresh, torch.ones_like(good_thresh) * 0.0000001)
+        point_mask = pooled.squeeze() >= good_thresh.unsqueeze(1).unsqueeze(2).expand(keypoints_prob.shape[0], 256, 256)
+    else:
+        point_mask = pooled.squeeze()
+    return point_mask
+
+
+def threshold_nms_dense(keypoints_prob, pool=8, take=50):
+    nms = PoolingNms(pool)
     pooled = nms(keypoints_prob)
     if take:
         good_thresh = torch.sort(pooled.squeeze().reshape(pooled.shape[0],

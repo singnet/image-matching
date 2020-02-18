@@ -166,8 +166,8 @@ def compute_loss_hom_det(heatmap1, heatmap2, batch, point_mask1,
 
     H = batch['H']
     H_inv = batch['H_inv']
-    mask2 = batch['mask'].squeeze()
-    mask1 = torch.ones_like(heatmap1)
+    mask2 = batch['mask2'].squeeze()
+    mask1 = batch['mask1'].squeeze()
 
     # use Hinv for points1 -> points2 mapping
     logprob2 = torch.log(heatmap2 + 0.0000001)
@@ -188,13 +188,15 @@ def compute_loss_hom_det(heatmap1, heatmap2, batch, point_mask1,
                 neg_reward=-2.1)
 
     result = process(loss_hom(**args), )
-    det_diff = compute_det_diff(H, H_inv, heatmap1, heatmap2, mask2.squeeze())
+    # loss_desc = compute_loss_desc_random_points(**args)
+    det_diff = compute_det_diff(H, H_inv, heatmap1, heatmap2,
+                                mask1.squeeze(), mask2.squeeze())
     result['det_diff'] = det_diff.mean()
     result['loss'] = result['loss'] + result['det_diff']
     return result
 
 
-def compute_det_diff(H, H_inv, heatmap1, heatmap2, mask2, weight=2000):
+def compute_det_diff(H, H_inv, heatmap1, heatmap2, mask1, mask2, weight=2000):
     assert len(heatmap1.shape) == 2
     reproj = hom.bilinear_sampling(heatmap2.unsqueeze(2).clone(), H_inv,
                                    h_template=heatmap2.shape[0],
@@ -209,7 +211,12 @@ def compute_det_diff(H, H_inv, heatmap1, heatmap2, mask2, weight=2000):
     mask2proj = hom.bilinear_sampling(mask2.unsqueeze(2).clone(), H_inv,
                                       h_template=heatmap1.shape[0],
                                       w_template=heatmap1.shape[1],
-                                      to_numpy=False, mode='nearest').to(heatmap1)
+                                      to_numpy=False, mode='nearest').to(heatmap1) * mask1
+
+    mask1proj = hom.bilinear_sampling(mask1.unsqueeze(2).clone(), H,
+                                      h_template=heatmap1.shape[0],
+                                      w_template=heatmap1.shape[1],
+                                      to_numpy=False, mode='nearest').to(heatmap1) * mask2
 
     forward_proj = hom.bilinear_sampling(heatmap1.unsqueeze(2).clone(), H,
                                          h_template=heatmap1.shape[0],
@@ -221,7 +228,7 @@ def compute_det_diff(H, H_inv, heatmap1, heatmap2, mask2, weight=2000):
                                       w_template=heatmap2.shape[1],
                                       to_numpy=False, mode='bilinear').to(heatmap1)
     det_diff = ((reproj[numpy_nonzero(mask2proj)] - heat1proj[numpy_nonzero(mask2proj)]) ** 2 * weight).mean() + \
-               ((forward_proj[numpy_nonzero(mask2)] - heat2proj[numpy_nonzero(mask2)]) ** 2 * weight).mean()
+               ((forward_proj[numpy_nonzero(mask1proj)] - heat2proj[numpy_nonzero(mask1proj)]) ** 2 * weight).mean()
     return det_diff
 
 
@@ -280,7 +287,7 @@ def match_desc_reward(points1projected, points2, desc1_int,
     quality_desc = torch.ones(1).to(desc1_int)
     if bool(neq.sum()):
         # any non-matches are ok to optimize
-        wrong_id = neq.nonzero()[0]
+        wrong_id = (neq * (geom_dist >= 7)).nonzero()[0]
         # sim_wrong1 = similiarity_by_idx(desc1_int, desc2_int,
         #                    wrong_id.squeeze(),
         #                    k2_desc[wrong_id].squeeze())
@@ -306,7 +313,9 @@ def match_desc_reward(points1projected, points2, desc1_int,
     # matches = numpy.stack([numpy.arange(len(points1projected)), k2_desc, (k2_desc != ind2).squeeze()])
     # draw_m(img1, img2, matches, points, points2)
     # loss_desc, q = desc_quality_loss(geom_match, desc2_int, desc1_int, points2, points1projected)
-    return reward, loss_desc, quality.to(desc1_int), quality_desc.to(desc1_int), ((points1projected + points2[ind2]) / 2.0).round()[correct_idx.nonzero()]
+    return reward, loss_desc, quality.to(desc1_int), \
+           quality_desc.to(desc1_int), \
+           ((points1projected + points2[ind2]) / 2.0).round()[correct_idx.nonzero()]
 
 
 def desc_reward(desc1_int, desc2_int, dist, ind2, k2_desc, use_means):
@@ -331,3 +340,5 @@ def desc_reward(desc1_int, desc2_int, dist, ind2, k2_desc, use_means):
     return reward, sim_expected, similarity_desc[:, 0], similarity_rand
 
 
+def loss_desc_random_points(average=[0.0], neg_reward=-0.5, **kwargs):
+    pass

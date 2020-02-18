@@ -28,7 +28,7 @@ def train_loop(engine: Engine, test_engine: Engine,
                train_loader, test_loader,
                epochs, optimizer,
                sp, **kwargs):
-    for epoch in range(1, epochs):
+    for epoch in range(1, epochs + 1):
         if test_engine is not None:
             print('testing')
             test_engine.run(test_loader)
