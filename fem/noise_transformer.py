@@ -46,7 +46,7 @@ class NoisyTransformWithResize(TransformCompose):
         return result
 
     def sample(self, x):
-        return self.sample_no_source_homography(x)
+        return self.sample_with_source_homography(x)
 
     def sample_with_source_homography(self, x):
         # x is batch 1, h, w
