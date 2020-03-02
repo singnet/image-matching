@@ -130,6 +130,7 @@ def make_noisy_transformers():
                    ]
     return Compose([RandomTransformer(transformer), totensor])
 
+
 def train_3d_airsim(batch, sp):
     imgs = torch.cat([batch['img1'], batch['img2']]).float()
     height, width = imgs.shape[1], imgs.shape[2]
