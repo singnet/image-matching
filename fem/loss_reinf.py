@@ -1,3 +1,4 @@
+from collections import defaultdict
 from fem.util import numpy_nonzero
 import sklearn.neighbors
 
@@ -54,6 +55,7 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
                                             256, points1)
 
 
+    result = dict()
     if not bool(in_bounds.sum()):
         reward, loss_desc, quality = torch.ones((1,)).to(desc1) * -0.1, None, torch.zeros((1,)).to(desc1)
     else:
@@ -78,21 +80,21 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
                                                            points=points1,
                                                            dist_thres=4,
                                                            neg_reward=neg_reward)
+        result['quality_desc'] = quality_desc.squeeze()
     deb = True
     deb = False
     if deb:
         import cv2
         cv2.imshow('img1', (img1.cpu() / 256).numpy())
         cv2.waitKey(500)
+        import drawing
         drawing.show_points(img1.cpu() / 256, points1.cpu(), 'points1_img1', 2)
         drawing.show_points(img2.cpu() / 256, points1projected.cpu(), 'points1_img2', 2)
 
-    result = dict()
     result['quality'] = quality.squeeze()
-    result['quality_desc'] = quality_desc.squeeze()
     rew = reward.mean()
 
-    loss = 0.0
+    loss = None
     non_point_mask = (point1_mask == 0)
     logprob1 = kwargs.get('logprob1')
     logprob2 = kwargs.get('logprob2')
@@ -111,6 +113,8 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
             loss_points = (-logprob1[numpy_nonzero(point1_mask)] * (reward)).mean()
             # points2_mask = kwargs['point2_mask']
             # loss_points = -((logprob1[numpy_nonzero(point1_mask)] + logprob2[numpy_nonzero(points2_mask)][k2]) * (reward)).mean()
+        if loss is None:
+            loss = 0.0
         loss = loss_points + loss
         points_expected_reward = (torch.exp(logprob1)[numpy_nonzero(point1_mask)] * reward).mean()
         result['loss_points'] = loss_points
@@ -119,10 +123,11 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
 
     if loss_desc is not None:
         loss = loss * 0.5 + loss_desc
-    if torch.isnan(loss).any():
+    if isinstance(loss, torch.Tensor) and torch.isnan(loss).any():
         import pdb;pdb.set_trace()
-    result.update(dict(loss=loss.squeeze(),
-                       rew=rew,
+    if loss is not None:
+        result['loss'] = loss
+    result.update(dict(rew=rew,
                        loss_desc=loss_desc,
                        points=torch.ones(1) * len(points1),
                        average=average[0]))
@@ -233,7 +238,7 @@ def compute_det_diff(H, H_inv, heatmap1, heatmap2, mask1, mask2, weight=2000):
 
 
 def process(*dicts):
-    res = dict()
+    res = defaultdict(float)
     for key in dicts[0].keys():
         tmp = [d[key] for d in dicts if (key in d) and (d[key] is not None)]
         if len(tmp):

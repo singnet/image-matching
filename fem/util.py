@@ -237,7 +237,7 @@ def match_descriptors(desc1_keypoints, desc2_keypoints, num=1):
                                                   leaf_size=10,
                                                   metric='cosine')
     tree_cos.fit(desc1_keypoints)
-    dist_cos, ind = tree_cos.kneighbors(desc2_keypoints, num)
+    dist_cos, ind = tree_cos.kneighbors(desc2_keypoints, min(num, len(desc1_keypoints)))
     return dist_cos, ind
 
 
@@ -504,7 +504,7 @@ def project3d(K1, K2, depth1, keypoints, pose1, pose2):
     return new_coords1
 
 
-def geom_match(points1, points2, num=10):
+def geom_match(points1, points2, num=2):
 
     if isinstance(points2, torch.Tensor):
         points2 = points2.cpu()
@@ -518,7 +518,7 @@ def geom_match(points1, points2, num=10):
 
     # mapping points1projected -> points2
     # query(points1)
-    geom_dist, ind2 = tree.query(points1, min(len(points1), num))
+    geom_dist, ind2 = tree.query(points1, min(len(points2), len(points1), num))
     return geom_dist, ind2
 
 
