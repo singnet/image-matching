@@ -15,7 +15,7 @@ import torch
 import time
 # import vis_utils
 
-GOOD_MATCH_THRESHOLD = 3
+GOOD_MATCH_THRESHOLD = 5
 
 dataset_root = '/mnt/fileserver/shared/datasets/SLAM_DATA/hpatches-dataset/hpatches-benchmark/data/hpatches-sequences-release'
 ld = sorted(listdir(dataset_root))
@@ -56,6 +56,11 @@ LightReplication = []
 ViewReplication = []
 
 break_flag = False
+
+
+imwrite = True
+result_dir = './results/'
+
 for d in range(len(ld)):
     dir = ld[d]
     img_dir = join(dataset_root, dir)
@@ -106,9 +111,13 @@ for d in range(len(ld)):
 
         if fe is not None:
             pts_2, desc_2, heatmap_2 = fe.run(img_2.astype('float32') / 255.)
+            import pdb;
+
+            pdb.set_trace()
         else:
             pts_2, desc_2 = sp.to(device).points_desc(torch.from_numpy(timg2).to(device), threshold=thresh)
             pts_2 = pts_2.T
+            import pdb;pdb.set_trace()
             desc_2 = desc_2[0].T.cpu().detach().numpy()
             pts_2 = numpy.concatenate([util.swap_rows(pts_2[:2]), pts_2[2, :][numpy.newaxis,:]])
         nCasesTotal += 1
@@ -202,22 +211,24 @@ for d in range(len(ld)):
         print("%i\t\tdir: %s\t\t'Replication ratio: %f'\t\tnMatches: %i\tnGoodMatches: %i\t\tMatching accuracy: %f" %
               (nCasesTotal, dir, fReplicatedRatio, nMatches, nGoodMatches, accuracy))
 
-       # img_output = np.zeros(shape=(2 * IMG_SIZE_MAX[0], img_1_src.shape[1] + img_2_src.shape[1], 3), dtype=np.uint8)
-       # img_1c = np.repeat(np.expand_dims(img_1.astype('uint8'), axis=2), 3, axis=2)
-       # img_2 = np.repeat(np.expand_dims(img_2.astype('uint8'), axis=2), 3, axis=2)
+        img_output = np.zeros(shape=(2 * IMG_SIZE_MAX[0], img_1_src.shape[1] + img_2_src.shape[1], 3), dtype=np.uint8)
+        img_1c = np.repeat(np.expand_dims(img_1.astype('uint8'), axis=2), 3, axis=2)
+        img_2 = np.repeat(np.expand_dims(img_2.astype('uint8'), axis=2), 3, axis=2)
 
-       # img_output[IMG_SIZE_MAX[0]:IMG_SIZE_MAX[0]+img_1_src.shape[0], :img_1_src.shape[1], :] = img_1c
-       # img_output[IMG_SIZE_MAX[0]:IMG_SIZE_MAX[0]+img_2_src.shape[0], img_1_src.shape[1]:, :] = img_2
-       # import drawing
-       # drawing.draw_matches(matches, pts_1, pts_2, img_output[IMG_SIZE_MAX[0]:, :, :])
+        img_output[IMG_SIZE_MAX[0]:IMG_SIZE_MAX[0]+img_1_src.shape[0], :img_1_src.shape[1], :] = img_1c
+        img_output[IMG_SIZE_MAX[0]:IMG_SIZE_MAX[0]+img_2_src.shape[0], img_1_src.shape[1]:, :] = img_2
+        import drawing
+        drawing.draw_matches(matches, pts_1, pts_2, img_output[IMG_SIZE_MAX[0]:, :, :])
         # vis_utils.draw_points(pts_1, img_1c, iscolor=False)
         # vis_utils.draw_points(pts_2, img_2, iscolor=False)
 
         c = 5
-        #img_output[:img_1_src.shape[0], :img_1_src.shape[1], :] = img_1c
-       # img_output[:img_2_src.shape[0], img_1_src.shape[1]:, :] = img_2
-       # cv2.imshow('', img_output[IMG_SIZE_MAX[0]:, :, :])
-       # c = cv2.waitKey(10)
+        img_output[:img_1_src.shape[0], :img_1_src.shape[1], :] = img_1c
+        img_output[:img_2_src.shape[0], img_1_src.shape[1]:, :] = img_2
+        #cv2.imshow('', img_output[IMG_SIZE_MAX[0]:, :, :])
+        if imwrite:
+            cv2.imwrite(os.path.join(result_dir, ''.join(img_list[n].split('/')[-2:]) + '.png'), img_output[IMG_SIZE_MAX[0]:, :, :])
+        #c = cv2.waitKey(10)
         if c == 1048603:
             break_flag = True
             break
