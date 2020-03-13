@@ -15,7 +15,7 @@ import torch
 import time
 # import vis_utils
 
-GOOD_MATCH_THRESHOLD = 5
+GOOD_MATCH_THRESHOLD = 5 
 
 dataset_root = '/mnt/fileserver/shared/datasets/SLAM_DATA/hpatches-dataset/hpatches-benchmark/data/hpatches-sequences-release'
 ld = sorted(listdir(dataset_root))
@@ -27,7 +27,7 @@ fe = None
 #                          conf_thresh= 0.025,
 #                          nn_thresh= 0.5,
 #                          cuda=True)
-weight = "./snapshots/super1600.pt"
+weight = "./super6300.pt"
 nms = MagicNMS(nms_dist=8)
 
 device = 'cuda'
@@ -82,7 +82,7 @@ for d in range(len(ld)):
     img_1_src = cv2.imread(img_list[0])
     img_1 = cv2.cvtColor(img_1_src, cv2.COLOR_RGB2GRAY)
     timg1 = np.expand_dims(np.expand_dims(img_1.astype('float32'), axis=0), axis=0)
-    if any((1500 < x) for x in timg1.shape):
+    if any((1900 < x) for x in timg1.shape):
         device = 'cpu'
     else:
         device = 'cuda'
@@ -111,13 +111,9 @@ for d in range(len(ld)):
 
         if fe is not None:
             pts_2, desc_2, heatmap_2 = fe.run(img_2.astype('float32') / 255.)
-            import pdb;
-
-            pdb.set_trace()
         else:
             pts_2, desc_2 = sp.to(device).points_desc(torch.from_numpy(timg2).to(device), threshold=thresh)
             pts_2 = pts_2.T
-            import pdb;pdb.set_trace()
             desc_2 = desc_2[0].T.cpu().detach().numpy()
             pts_2 = numpy.concatenate([util.swap_rows(pts_2[:2]), pts_2[2, :][numpy.newaxis,:]])
         nCasesTotal += 1
@@ -155,7 +151,7 @@ for d in range(len(ld)):
             if err[i] <= GOOD_MATCH_THRESHOLD:
                 nGoodMatches += 1
                 matches[2, i] = 0
-        accuracy = float(nGoodMatches) / float(nMatches)
+        accuracy = float(nGoodMatches) / float(nMatches) if nMatches else 0.0
 
         if is_attribs:
             LightAccuracy.append(accuracy)
