@@ -24,13 +24,12 @@ ld = sorted(listdir(dataset_root))
 device = 'cuda'
 PATH_WEIGHTS = "./superpoint_magicleap/superpoint_v1.pth"
 
-weight = "./snapshots/super4200.pt"
 weight = "./snapshots/super3400.pt"
 nms = MagicNMS(nms_dist=8)
 
 
 thresh = 0.015
-thresh = 0.0217122295525
+thresh = 0.0207122295525
 nn_thresh = 0.85
 
 
