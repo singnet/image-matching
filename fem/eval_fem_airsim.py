@@ -11,6 +11,7 @@ import time
 import torch
 
 from fem import util
+from fem.drawing import make_image_quad
 from scipy.special import expit
 
 
@@ -358,22 +359,3 @@ def repeat(H_batch, K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1,
     # but if we have used ground truth for matching then it is
     # points recovered / points so it is recall
     return ms1.recall
-
-
-def make_image_quad(img_1, img_2, pts_1, pts_2):
-    img_size = img_1.shape[:2]
-    img_output = np.zeros(shape=(2 * img_size[0], 2 * img_size[1], 3), dtype=np.uint8)
-    img_1 = np.repeat(np.expand_dims(img_1.astype('uint8'), axis=2), 3, axis=2)
-    img_2 = np.repeat(np.expand_dims(img_2.astype('uint8'), axis=2), 3, axis=2)
-    img_output[:img_size[0], :img_size[1], :] = img_1
-    img_output[:img_size[0], img_size[1]:, :] = img_2
-    img_output[img_size[0]:, :img_size[1], :] = img_1
-    img_output[img_size[0]:, img_size[1]:, :] = img_2
-    draw_points(pts_1, img_output[:img_size[0], :img_size[1], :], iscolor=False)
-    draw_points(pts_2, img_output[:img_size[0], img_size[1]:, :], iscolor=False)
-    draw_points(pts_1, img_1, iscolor=False)
-    draw_points(pts_2, img_2, iscolor=False)
-
-    img_output[:img_size[0], :img_size[1], :] = img_1
-    img_output[:img_size[0], img_size[1]:, :] = img_2
-    return img_output.copy()

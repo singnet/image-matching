@@ -13,7 +13,8 @@ def draw_desc_interpolate(img_source, img_h, keypoints, keypoints2,
     # dist, ind = tree.query(desc2_keypoints.detach())
 
     img_pair = numpy.hstack([img_source, img_h]).astype(numpy.uint8)
-    img_pair = numpy.stack([img_pair, img_pair, img_pair], axis=2).squeeze()
+    if len(img_pair.shape) == 2 or img_pair.shape[-1] == 1:
+        img_pair = numpy.stack([img_pair, img_pair, img_pair], axis=2).squeeze()
     pts1 = numpy.vstack([keypoints[:, 1], keypoints[:, 0]])
     pts2 = numpy.vstack([keypoints2[:, 1], keypoints2[:, 0]])
     tree_cos = sklearn.neighbors.NearestNeighbors(n_neighbors=1,

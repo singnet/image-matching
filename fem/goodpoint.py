@@ -94,11 +94,8 @@ class GoodPoint(nn.Module):
         x = self.activation(x)
         x = batch1(x)
         x = conv2(x)
-        if skip:
-            pass
-        else:
-            x = self.activation(x)
-            x = batch2(x)
+        x = self.activation(x)
+        x = batch2(x)
         return x
 
     def vgg(self, x):

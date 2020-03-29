@@ -25,7 +25,7 @@ device = 'cuda'
 PATH_WEIGHTS = "./superpoint_magicleap/superpoint_v1.pth"
 
 weight = "./snapshots/super4200.pt"
-weight = "./super3400.pt"
+weight = "./snapshots/super3400.pt"
 nms = MagicNMS(nms_dist=8)
 
 
@@ -40,8 +40,7 @@ nn_thresh = 0.85
 #                        conf_thresh=thresh,
 #                        nn_thresh=nn_thresh,
 #                        cuda=True)
-#
-activation = torch.nn.ReLU()
+
 activation = torch.nn.LeakyReLU()
 
 sp = GoodPoint(dustbin=0,
@@ -58,6 +57,9 @@ def strip_module(st):
 
 sp.load_state_dict({strip_module(x): v for (x,v) in data.items()})
 
+
+#sp = SuperPoint(MagicNMS()).to(device).eval()
+#sp.load_state_dict(torch.load(PATH_WEIGHTS))
 
 if fe is not None:
     sp = None
