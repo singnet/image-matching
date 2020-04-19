@@ -1,7 +1,7 @@
 import os
 import sys
 import numpy
-from fem.util import caluculate_h, swap_rows, project_points2
+from fem.util import calculate_h, swap_rows, project_points2
 from fem.wrapper import SuperPoint
 from fem import drawing
 import imageio
@@ -60,7 +60,7 @@ def main(sp, thresh, nn_thresh=0.8, draw=True):
         arr[:, (1, 3)] = arr[:, (1, 3)] * scale
         points1 = arr[:, :2]
         points2 = arr[:, 2:]
-        H, H_inv = caluculate_h(points1, points2)
+        H, H_inv = calculate_h(points1, points2)
         # (x, y) to (row, col)
         points1 = swap_rows(arr[:, :2].T).T
         points2 = swap_rows(arr[:, 2:].T).T
@@ -177,5 +177,5 @@ if __name__ == '__main__':
 
     gp.load_state_dict(torch.load(weight, map_location=device)['superpoint'])
     super_thresh = 0.015
-    thresh = 0.0207190856295525
+    thresh = 0.0207190856295525`
     main(gp, thresh=thresh, draw=False, nn_thresh=0.8)

@@ -1,6 +1,7 @@
 from wrappers import cfem_wrapper as fm
 from wrappers import eval_airsim_wrapper as evw
 
+import numpy
 import numpy as np
 import cv2, os
 import random
@@ -10,7 +11,10 @@ import time
 
 import torch
 
+from fem.bench import get_points_desc
+from fem.bench import coverage, harmonic
 from fem import util
+from fem.drawing import show_points
 from fem.drawing import make_image_quad
 from scipy.special import expit
 
@@ -57,6 +61,10 @@ size = int(3)
 correspCount = int(0)
 
 
+def project(H_inv, pts_2):
+    transp = H_inv @ numpy.stack([pts_2[:,1], pts_2[:,0], numpy.ones(len(pts_2))], axis=1)[:, (1,0,2)].T
+    row_col = numpy.stack((transp[0], transp[1])).T
+    return numpy.asarray(row_col / transp[-1][np.newaxis].T)
 
 
 def draw_points(pts, img, iscolor=True):
@@ -106,8 +114,6 @@ def rewrite_data_to_file(file_path, data):
     np.savetxt(file, data, delimiter='\t')
     file.truncate()
     file.close()
-
-
 
 
 def wrap_features(pts, desc):
@@ -197,13 +203,94 @@ def geom_match_to_vm(geom_dist, ind2):
     return matches, len(matches)
 
 
-def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=None, device='cuda'):
-    fe = sp.to(device)
+# https://www.semicolonworld.com/question/55456/rotate-image-and-crop-out-black-borders
+
+def getTranslationMatrix2d(dx, dy):
+    """
+    Returns a numpy affine transformation matrix for a 2D translation of
+    (dx, dy)
+    """
+    return np.matrix([[1, 0, dx], [0, 1, dy], [0, 0, 1]])
+
+
+def rotateImage(image, angle):
+    """
+    Rotates the given image about it's centre
+    """
+
+    image_size = (image.shape[1], image.shape[0])
+    image_center = tuple(np.array(image_size) / 2)
+
+    rot_mat = np.vstack([cv2.getRotationMatrix2D(image_center, angle, 1.0), [0, 0, 1]])
+    trans_mat = np.identity(3)
+
+    w2 = image_size[0] * 0.5
+    h2 = image_size[1] * 0.5
+
+    rot_mat_notranslate = np.matrix(rot_mat[0:2, 0:2])
+
+    tl = (np.array([-w2, h2]) * rot_mat_notranslate).A[0]
+    tr = (np.array([w2, h2]) * rot_mat_notranslate).A[0]
+    bl = (np.array([-w2, -h2]) * rot_mat_notranslate).A[0]
+    br = (np.array([w2, -h2]) * rot_mat_notranslate).A[0]
+    x_coords = [pt[0] for pt in [tl, tr, bl, br]]
+    x_pos = [x for x in x_coords if x > 0]
+    x_neg = [x for x in x_coords if x < 0]
+
+    y_coords = [pt[1] for pt in [tl, tr, bl, br]]
+    y_pos = [y for y in y_coords if y > 0]
+    y_neg = [y for y in y_coords if y < 0]
+
+    right_bound = max(x_pos)
+    left_bound = min(x_neg)
+    top_bound = max(y_pos)
+    bot_bound = min(y_neg)
+
+    new_w = int(abs(right_bound - left_bound))
+    new_h = int(abs(top_bound - bot_bound))
+    new_image_size = (new_w, new_h)
+
+    new_midx = new_w * 0.5
+    new_midy = new_h * 0.5
+
+    dx = int(new_midx - w2)
+    dy = int(new_midy - h2)
+
+    trans_mat = getTranslationMatrix2d(dx, dy)
+    affine_mat = (np.matrix(trans_mat) * np.matrix(rot_mat))[0:2, :]
+    result = cv2.warpAffine(image, affine_mat, new_image_size, flags=cv2.INTER_LANCZOS4)
+    rot_mat_notranslate = rot_mat_notranslate.T
+    tl = (np.array([-w2, h2]) * rot_mat_notranslate).A[0]
+    tr = (np.array([w2, h2]) * rot_mat_notranslate).A[0]
+    bl = (np.array([-w2, -h2]) * rot_mat_notranslate).A[0]
+    br = (np.array([w2, -h2]) * rot_mat_notranslate).A[0]
+
+    pts_init = np.asarray([[-w2, h2], [w2, h2], [-w2, -h2], [w2, -h2]])
+    pts_pert = np.stack([tl, tr, bl, br])
+    pts_init = pts_init + (w2, h2)
+    pts_pert = pts_pert + (w2, h2)
+    x_min = min(0, pts_pert[:,0].min())
+    y_min = min(0, pts_pert[:,1].min())
+    pts_pert = pts_pert - (x_min, y_min)
+    pts_init = pts_init[:,(1,0)]
+    pts_pert = pts_pert[:,(1,0)]
+    H, H_inv = util.calculate_h(pts_init, pts_pert)
+
+    return result, H, H_inv
+
+
+def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=None, device='cuda', rotation_angle=0.0, fe=None):
+    if sp is not None:
+        sp = sp.to(device)
     nCases = 0
     meanTime = 0
     meanRecall = 0.
     meanPrecisionInv = 0.
     repeatability = 0.
+    icoverage = 0.0
+    rotate = False
+    if rotation_angle > 0.0:
+        rotate = True
     if N is None:
         N = len(loader)
     c = 0
@@ -218,6 +305,9 @@ def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=N
 
             img_1 = img_1_batch[j, :, :]
             img_2 = img_2_batch[j, :, :]
+            if rotate:
+                img_2_rot, H, H_inv = rotateImage(img_2, rotation_angle)
+                img_2 = img_2_rot
             img_size = img_1.shape
             depth_1 = depth_1_batch[j, :, :]
             depth_2 = depth_2_batch[j, :, :]
@@ -228,7 +318,14 @@ def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=N
 
             t1 = time.time()
 
-            pts_1, desc_1_ = fe.points_desc(torch.from_numpy(timg1).to(device), threshold=thresh)
+            pts_1, desc_1_ = get_points_desc(device=device,
+                    img=img_1[np.newaxis, np.newaxis,...],
+                    thresh=thresh,
+                    fe=fe, sp=sp)
+            pts_1 = pts_1.T[:,(1,0, 2)]
+            desc_1_ = desc_1_.T
+
+            # pts_1, desc_1_ = fe.points_desc(torch.from_numpy(timg1).to(device), threshold=thresh)
 
             if desc_model:
                 heatmap, desc_crude = desc_model.forward(torch.from_numpy(timg1).to(device) / 255.0)
@@ -243,7 +340,27 @@ def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=N
             t2 = time.time()
             meanTime = meanTime + (t2 - t1)
 
-            pts_2, desc_2_ = fe.points_desc(torch.from_numpy(timg2).to(device), threshold=thresh)
+            pts_2, desc_2_ = get_points_desc(device=device,
+                    img=img_2[np.newaxis, np.newaxis,...],
+                    thresh=thresh,
+                    fe=fe, sp=sp)
+            pts_2 = pts_2.T[:,(1,0,2)]
+            desc_2_ = desc_2_.T
+
+
+            # pts_2, desc_2_ = fe.points_desc(torch.from_numpy(timg2).to(device), threshold=thresh)
+
+            if rotate:
+    #            show_points(img_2.copy(), pts_2[:, 0:2].astype(np.int32), 'rot', scale=2)
+
+                reproj = project(H_inv, pts_2)
+                hmax, wmax = img_1.shape
+                in_bounds = (reproj[:,0] > 0) * (reproj[:,0] < hmax) * (reproj[:,1] > 0) * (reproj[:,1] < wmax)
+                reproj = numpy.concatenate([reproj, pts_2[:, 2][:,np.newaxis]], axis=1)
+                pts_2 = reproj[in_bounds.nonzero()[0]]
+                desc_2_ = desc_2_[in_bounds.nonzero()[0]]
+                img_2 = img_2_batch[j, :, :]
+    #           show_points(img_2.copy(), pts_2[:, 0:2].astype(np.int32), 'reproj', scale=2)
             if desc_model:
                 heatmap, desc_crude2 = desc_model.forward(torch.from_numpy(timg2).to(device) / 255.0)
                 desc_2_ = util.descriptor_interpolate(desc_crude2[0],
@@ -252,22 +369,27 @@ def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=N
                                                     pts_2[:,:2])
             # print(len(pts_1))
             # print(len(pts_2))
+
             if isinstance(desc_1_, list):
                 desc_1 = desc_1_[0].detach().cpu().numpy()
                 desc_2 = desc_2_[0].detach().cpu().numpy()
             else:
-                desc_1 = desc_1_.detach().cpu().numpy()
-                desc_2 = desc_2_.detach().cpu().numpy()
-
+                desc_1 = desc_1_
+                desc_2 = desc_2_
 
             K1 = sample['K1'][j]
             K2 = sample['K2'][j]
             pose1 = sample['pose1'][j]
             pose2 = sample['pose2'][j]
 
-            repeatability += repeat(H_batch[j], K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1, pts_2, draw) * 0.5
-            repeatability += repeat(np.linalg.inv(H_batch[j]), K2, K1, depth_2, depth_1, img_2, img_1, pose2, pose1,
-                                    pts_2, pts_1, draw) * 0.5
+            rep, cov = repeat(H_batch[j], K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1, pts_2, draw)
+            repeatability += rep * 0.5
+            icoverage += cov * 0.5
+            rep, cov = repeat(np.linalg.inv(H_batch[j]), K2, K1, depth_2, depth_1, img_2, img_1, pose2, pose1,
+                                    pts_2, pts_1, draw)
+            repeatability += rep * 0.5
+            icoverage += cov * 0.5
+
 
             # show_points(img_1.copy(), pts_1[:, 0:2][:40].astype(np.int32), 'orig', scale=2)
             # show_points(img_2.copy(), new_coords1, 'projected', scale=2)
@@ -304,7 +426,7 @@ def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=N
                 if draw:
                     draw_matches(matches2, pts_2, pts_1, img_output2[img_size[0]:, :, :])
                 if print_res:
-                    print("%i/%i\trecall: %f\tnMatches: %i\tTime: %f" % (nCases, N, ms2.recall, ms2.nMatches, t2 - t1))
+                    print("%i/%i\trecall: %f\tnMatches: %i\tCoverage: %f\tTime: %f" % (nCases, N, ms2.recall, ms2.nMatches, cov, t2 - t1))
                     print('\n')
                 meanRecall += 0.5 * ms2.recall
 
@@ -340,9 +462,12 @@ def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=N
 
     mrecall = meanRecall / float(nCases)
     mrepeat = repeatability / float(nCases)
+    mcoverage = icoverage / float(nCases)
     f1 = 2 * mrecall * mrepeat / (mrecall + mrepeat)
     print("Mean recall: {0}".format(mrecall))
     print("Repeatability: {0}".format(mrepeat))
+    print("Coverage: {0}".format(mcoverage))
+    print('harmonic mean: {0}'.format(harmonic(mrecall, mrepeat, mcoverage)))
     print("F1: {0}".format(f1))
     return f1
 
@@ -355,7 +480,30 @@ def repeat(H_batch, K1, K2, depth_1, depth_2, img_1, img_2, pose1, pose2, pts_1,
     if draw:
         img_output1 = make_image_quad(img_1, img_2, pts_1, pts_2)
         draw_matches(matches1, pts_1, pts_2, img_output1[img_1.shape[0]:, :, :])
+    matches = matches1
+    # compute coverage
+    pt2_p = new_coords1
+    pt2_p = pt2_p.T
+    pts_1 = pts_1.T
+    pts_2 = pts_2.T
+    pt1 = pts_1[:2, matches[0, :].astype('int32')]
+    pt2 = pts_2[:2, matches[1, :].astype('int32')]
+
+    dx = pt2_p[0, :] - pt2[0, :]
+    dy = pt2_p[1, :] - pt2[1, :]
+    err = numpy.sqrt(dx * dx + dy * dy)
+    matches = matches1
+    nMatches = len(matches[0])
+    GOOD_MATCH_THRESHOLD = 3.0
+    for i in range(nMatches):
+        if err[i] <= GOOD_MATCH_THRESHOLD:
+            matches[2, i] = 0
+        else:
+            matches[2, i] = err[i]
+    # coverage wants (x, y) as opoused to (row, col)
+    coverage1, coverage_mask, intersect = coverage(img_1, None, matches, pt1[(1,0),:], 20)
+    # cv2.imshow('coverage', coverage_mask)
     # ms1.recall = True matches / Matches so it is precision
     # but if we have used ground truth for matching then it is
     # points recovered / points so it is recall
-    return ms1.recall
+    return ms1.recall, coverage1

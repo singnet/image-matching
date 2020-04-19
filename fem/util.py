@@ -338,7 +338,7 @@ def descriptor_interpolate(desc, rows, cols, points, normalize=True, align_corne
     return tmp.transpose(1, 0)
 
 
-def caluculate_h(pts_init, pts_pert):
+def calculate_h(pts_init, pts_pert):
     H, _ = cv2.findHomography(pts_init, pts_pert)
     H_inv, _ = cv2.findHomography(pts_pert, pts_init)
     H = H.astype(numpy.float32)

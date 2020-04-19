@@ -5,6 +5,9 @@ import cv2
 
 
 def get_points_desc(fe, sp, device, img, thresh):
+    """
+    Returns points in (x,y) format alongside with descriptors
+    """
     if fe is not None:
         pts_2, desc_2, heatmap_2 = fe.run(img.astype('float32').squeeze() / 255.)
     else:
@@ -59,7 +62,7 @@ def replication_ratio(pts1_proj, pts2, threshold):
     return result
 
 
-def coverage(img1, mask, matches, pt1):
+def coverage(img1, mask, matches, pt1, radius=25):
     if mask is None:
         mask = numpy.ones_like(img1)
     coverage_mask = numpy.zeros_like(img1)
@@ -67,8 +70,8 @@ def coverage(img1, mask, matches, pt1):
     pt_round = numpy.round(pt1.T).astype(numpy.int16)
     for i in range(len(is_error)):
         if not is_error[i]:
-            point = tuple(pt_round[i])
-            cv2.circle(coverage_mask, point, 25, (255, 255, 255), cv2.FILLED)
+            point = tuple(pt_round[:, (0,1)][i])
+            cv2.circle(coverage_mask, point, radius, (255, 255, 255), cv2.FILLED)
     intersect = coverage_mask * mask * 255
     coverage = (intersect > 0).sum() / (mask > 0).sum()
     return coverage, coverage_mask, intersect

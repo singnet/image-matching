@@ -7,7 +7,7 @@ import cv2
 from fem.hom import bilinear_sampling
 import scipy.ndimage
 from skimage import util
-from fem.util import caluculate_h
+from fem.util import calculate_h
 
 
 def random_brightness(images, per_color=True, channel=0, range=(0, 70)):
@@ -425,7 +425,7 @@ class HomographySample:
         :return:
         """
         pts_init = self.pts_init(h, w)
-        H, H_inv = caluculate_h(pts_init, pts_pert)
+        H, H_inv = calculate_h(pts_init, pts_pert)
         return H, H_inv
 
     def sample_homography(self, h, w):
@@ -463,7 +463,7 @@ class HomographySample:
             pts_pert = ((pts_pert.transpose() - shift) @ R + shift).transpose()
 
         pts_pert = numpy.transpose(pts_pert)
-        H, H_inv = caluculate_h(pts_init, pts_pert)
+        H, H_inv = calculate_h(pts_init, pts_pert)
         return H, H_inv
 
     def perspective_side(self, left, persp, pts_pert):
