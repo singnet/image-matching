@@ -2,12 +2,13 @@ import sys
 
 from collections import defaultdict
 import ignite
+from packaging import version
 
 import torch.optim as optim
 from fem.reinf_utils import threshold_nms, threshold_nms_dense
 from torch.utils.data import DataLoader
 
-from fem.dataset import SynteticShapes, Mode, ColorMode
+from fem.dataset import SynteticShapes, Mode, ColorMode, ImageDirectoryDataset
 from fem.transform import *
 from fem import util
 
@@ -74,7 +75,10 @@ def train_points_reinf(batch, model, optimizer, scheduler, device, function, cou
     optimizer.step()
     scheduler.step()
     result = {k: v.cpu().detach().numpy() for (k,v) in out.items()}
-    result['lr'] = scheduler.get_last_lr()
+    if version.parse(torch.__version__) < version.parse('1.4.0'):
+        result['lr'] = scheduler.get_lr()
+    else:
+        result['lr'] = scheduler.get_last_lr()
     sys.stdout.flush()
 
     count[0] += 1
@@ -129,13 +133,13 @@ def train_maxpool_by_pairs(batch, model, **kwargs):
         del _
         desc = desc.detach()
 
-    heatmaps, desc_back = model.semi_forward(imgs.unsqueeze(1) / 255.0)
+    heatmaps, desc_back = model(imgs.unsqueeze(1) / 255.0)
     if not desc_model:
         desc = desc_back
     else:
         del desc_back
 
-    keypoints_prob = model.expand_results(model.depth_to_space, heatmaps)
+    keypoints_prob = model.module.expand_results(model.module.depth_to_space, heatmaps)
     point_mask32 = threshold_nms(keypoints_prob, pool=32, take=None)
     point_mask16 = threshold_nms(keypoints_prob, pool=16, take=None)
     # drawing.show_points(batch['img1'][0].cpu().numpy() / 255.0, point_mask32[0].nonzero(), 'img1')
@@ -167,54 +171,51 @@ def train_maxpool_by_pairs(batch, model, **kwargs):
     return result
 
 
-def train_super():
-    batch_size = 20
+def train_good():
+    batch_size = 90
     test_batch_size = 20
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print('using device {0}'.format(device))
-    lr = 0.0005
-    epochs = 1
-    weight_decay = 0.005
+    lr = 0.005
+    epochs = 3
+    weight_decay = 0.0005
+    parallel = True
     aggregate = False
     if aggregate:
         batch_size = 1
 
-
-    super_file = "./snapshots/super12300.pt"
-
+    super_file = "./super4300.pt"
 
     state_dict = torch.load(super_file, map_location=device)
-    sp = GoodPoint(activation=torch.nn.ReLU(), grid_size=8,
+    sp = GoodPoint(activation=torch.nn.LeakyReLU(), grid_size=8,
                batchnorm=True, dustbin=0).to(device)
 
-    #desc_model = GoodPoint(activation=torch.nn.ReLU(), grid_size=8,
-    #       batchnorm=True, dustbin=0).to(device)
+
 
     print("loading weights from {0}".format(super_file))
 
-    sp.load_state_dict(state_dict['superpoint'], strict=True)
-    #desc_model.load_state_dict(state_dict['superpoint'], strict=True)
+
     print("loading optimizer")
-    optimizer = optim.RMSprop(sp.parameters(), lr=lr, weight_decay=weight_decay)
+    optimizer = optim.AdamW(sp.parameters(), lr=lr)
     optimizer.load_state_dict(state_dict['optimizer'])
-    state_dict['optimizer']['param_groups'][0]['lr'] = lr
-    state_dict['optimizer']['param_groups'][0]['initial_lr'] = lr
-    state_dict['optimizer']['param_groups'][0]['weight_decay'] = weight_decay
 
     decay_rate = 0.9
     decay_steps = 1000
 
-    def l(step, my_step=[0]):
+    if parallel:
+        sp = torch.nn.DataParallel(sp)
+
+    sp.load_state_dict(state_dict['superpoint'], strict=True)
+    def l(step, my_step=[3700 * 4]):
         my_step[0] += 1
         # if my_step[0] < 100:
         #     return my_step[0] / 100
         return exponential_lr(decay_rate, my_step[0], decay_steps, staircase=False)
 
-    l = lambda step: 1.0
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=l)
 
-    train_loader, test_loader, coco_loader, synth = get_loaders(batch_size, test_batch_size, 30 if aggregate else 1)
+    test_loader, coco_loader, fundus_loader = get_loaders(batch_size, test_batch_size, 30 if aggregate else 1)
     test_engine = Engine(lambda eng, batch: test(eng, batch, sp, device, loss_function=test_callback))
     util.add_metrics(test_engine, average=True)
 
@@ -254,35 +255,34 @@ class NmsImgTransform:
 
 
 def get_loaders(batch_size, test_batch_size, num):
-    from fem.airsim_dataset import AirsimWithTarget
-    frame_offset=5
-    train_dataset = AirsimWithTarget(dir_day, dir_night, poses_file, frame_offset=frame_offset,
-                                     transform=NmsImgTransform())
+    fire = '/mnt/fileserver/shared/datasets/fundus/FIRE/Images/'
+    from fundus import FundusTransformWithResize
 
+    fundus_dataset = ImageDirectoryDataset(fire,
+                                           transform=FundusTransformWithResize(num),
+                                           color=ColorMode.GREY)
+    fundus_dataset.points = fundus_dataset.points * 50
+    fundus_dataset._size = len(fundus_dataset.points)
     coco_dataset = SynteticShapes(coco_super, Mode.training,
                                   transform=NoisyTransformWithResize(num),
                                   color=ColorMode.GREY)
-    synth_dataset = SynteticShapes(synth_path, Mode.training,
-                                   transform=NoisyTransformWithResize(num),
-                                   color=ColorMode.GREY)
     coco_dataset.shuffle()
-    train_loader = DataLoader(train_dataset,
-                             batch_size=batch_size,
-                             shuffle=False)
-
 
     test_loader = DataLoader(coco_dataset, batch_size=test_batch_size)
     # synth_dataset._size = 10000
     # assert(len(synth_dataset) == 10000)
     # coco_dataset._size = 10000
-    synth_loader = DataLoader(synth_dataset, batch_size=batch_size,
-                              shuffle=True)
 
     coco_loader = DataLoader(coco_dataset,
                              batch_size=batch_size,
                              shuffle=False)
-    return train_loader, test_loader, coco_loader, synth_loader
+
+    fundus_loader = DataLoader(fundus_dataset,
+                               batch_size=batch_size,
+                               shuffle=True)
+
+    return test_loader, coco_loader, fundus_loader
 
 
 if __name__ == '__main__':
-    train_super()
+    train_good()

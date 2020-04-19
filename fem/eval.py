@@ -67,15 +67,27 @@ def run_all_snapshots():
     print(best_path)
 
 
-def test_magicleap(loader):
+def test_magicleap(loader, angle=0.0):
 
     from fem.wrapper import SuperPoint
     sp_path = '/home/noskill/projects/neuro-fem/fem/superpoint_magicleap/superpoint_v1.pth'
 
     sp = SuperPoint(nms).to(device)
     sp.load_state_dict(torch.load(sp_path))
-    loop(sp, loader, thresh=0.015, print_res=False, draw=False)
+    loop(sp, loader, thresh=0.015, print_res=False, draw=True, rotation_angle=angle)
     print('test superpoint completed')
+
+def test_magicleap1(loader, angle=0.0):
+    sp_path = '/home/noskill/projects/neuro-fem/fem/superpoint_magicleap/superpoint_v1.pth'
+
+    from superpoint_magicleap.demo_superpoint import PointTracker, SuperPointFrontend
+    fe = SuperPointFrontend(weights_path=sp_path,
+                        nms_dist=8,
+                        conf_thresh=0.015,
+                        nn_thresh=0.8,
+                        cuda=True)
+    loop(loader=loader, sp=None, fe=fe, thresh=0.015, print_res=True, draw=False, rotation_angle=angle)
+
 
 def test_distilled(loader):
     from superpoint_05 import SuperPointNet
@@ -87,16 +99,17 @@ def test_distilled(loader):
     print('test distilled completed')
 
 
-def run_good(loader):
-    weight = "./snapshots/super1600.pt"
+def run_good(loader, angle=0.0):
+    weight = "./snapshots/super3400.pt"
 
     sp = GoodPoint(dustbin=0,
-                   activation=torch.nn.ReLU(),
+                   activation=torch.nn.LeakyReLU(),
                    batchnorm=True,
                    grid_size=8,
                    nms=nms).eval()
     sp.load_state_dict(torch.load(weight, map_location=device)['superpoint'])
-    loop(sp, loader, draw=True, print_res=True, thresh=0.1295525, desc_model=None)
+    loop(sp=sp, loader=loader, draw=False, print_res=True, thresh=0.028075525,
+            desc_model=None, rotation_angle=angle)
     print('test goodpoint {0} completed'.format(weight))
 
 
@@ -132,9 +145,11 @@ nms = MagicNMS()
 
 
 #run_all_snapshots()
-# test_distilled(fantasy_loader)
-#test_magicleap(village_loader)
-#run_good(fantasy_loader)
-#print('fantasy_loader')
-run_good(village_loader)
+#test_distilled(fantasy_loader)
+test_magicleap1(village_loader, angle=0.0)
+#test_magicleap(fantasy_loader, angle=5.0)
+
+# run_good(fantasy_loader, angle=0.0)
+#run_good(village_loader, angle=5.0)
 print('village_loader')
+# print('fantasy_loader')

@@ -9,8 +9,9 @@ from fem.depth import DepthToSpace
 
 class GoodPoint(nn.Module):
     def __init__(self, grid_size, n_channels=1, activation=nn.ReLU(),
-                 batchnorm=True, dustbin=0, nms=None):
+                 batchnorm=True, dustbin=0, nms=None, align_corners=True):
         super().__init__()
+        self.align_corners = align_corners
         self.dustbin = dustbin
         self.activation = activation
         stride = 1
@@ -88,8 +89,13 @@ class GoodPoint(nn.Module):
         desc = desc.div(torch.unsqueeze(dn, 1))  # Divide by norm to normalize.
         return desc
 
-    def superblock(self, x, conv1, conv2, batch1, batch2):
-        x = batch2(self.activation(conv2(batch1(self.activation(conv1(x))))))
+    def superblock(self, x, conv1, conv2, batch1, batch2, skip=False):
+        x = conv1(x)
+        x = self.activation(x)
+        x = batch1(x)
+        x = conv2(x)
+        x = self.activation(x)
+        x = batch2(x)
         return x
 
     def vgg(self, x):
@@ -102,7 +108,7 @@ class GoodPoint(nn.Module):
         x = self.superblock(x, self.conv4a, self.conv4b, self.batchnorm6, self.batchnorm7)
         return x
 
-    def semi_forward(self, x):
+    def forward(self, x):
         assert x.max() > 0.01
         assert x.max() < 1.01
         x = self.vgg(x)
@@ -136,7 +142,7 @@ class GoodPoint(nn.Module):
         result = torch.stack(tmp)
         return result
 
-    def forward(self, x):
+    def forward_expand(self, x):
         if x.max() > 1.1:
             x = x / 255.0
         assert x.max() > 0.005
@@ -161,7 +167,7 @@ class GoodPoint(nn.Module):
         :param threshold: float
         :return:
         """
-        prob, desc = self.forward(x.float())
+        prob, desc = self.forward_expand(x.float())
         if prob.shape[1] % 2 == 0:
             prob = prob[:, 1]
         else:
@@ -206,7 +212,8 @@ class GoodPoint(nn.Module):
 
             desc_result.append(util.descriptor_interpolate(desc[0], rows,
                                                            cols,
-                                                           coords))
+                                                           coords,
+                                                           align_corners=self.align_corners))
         return coords_result, desc_result
 
 

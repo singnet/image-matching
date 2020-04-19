@@ -29,7 +29,7 @@ class NoisyTransformWithResize(TransformCompose):
                                                   beta=14,
                                                   theta=0.08,
                                                   random_scale_range=(0.8, 1.3),
-                                                  perspective=65)
+                                                  perspective=85)
         self.num = num
 
     def __call__(self, data=None, target=None):

@@ -33,6 +33,12 @@ def show_points(img, points, name, scale=1, save_path=None):
     cv2.waitKey(500)
 
 
+def draw_text(frame, text, x, y, color=(0, 255, 0), thickness=1, size=0.3,):
+    if x is not None and y is not None:
+        return cv2.putText(
+            frame, text, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, size, color, thickness)
+
+
 def draw_matches(matches, pts1, pts2, imgpair, iscolor=True, skip_match=False):
     # matches[0, :] = m_idx1
     # matches[1, :] = m_idx2
@@ -57,6 +63,7 @@ def draw_matches(matches, pts1, pts2, imgpair, iscolor=True, skip_match=False):
                     r = 255
                     g = 0
                     b = 0
+                    # imgpair = draw_text(imgpair, str(int(matches[2, i])), pt1[0], pt1[1])
                 else:
                     r = 0
                     b = 255
@@ -79,3 +86,24 @@ def draw_with_points(self, image, points, name="vasya"):
         cv2.circle(img, (p[1], p[0]), radius=3, thickness=-1, color=(255, 255, 255))
     cv2.imshow(name, img)
     cv2.waitKey(1000)
+
+
+def make_image_quad(img_1, img_2, pts_1, pts_2):
+    img_size = img_1.shape[:2]
+    img_output = numpy.zeros(shape=(2 * img_size[0], 2 * img_size[1], 3), dtype=numpy.uint8)
+    if len(img_1.shape) == 2:
+        img_1 = numpy.repeat(numpy.expand_dims(img_1.astype('uint8'), axis=2), 3, axis=2)
+        img_2 = numpy.repeat(numpy.expand_dims(img_2.astype('uint8'), axis=2), 3, axis=2)
+    img_output[:img_size[0], :img_size[1], :] = img_1
+    img_output[:img_size[0], img_size[1]:, :] = img_2
+    img_output[img_size[0]:, :img_size[1], :] = img_1
+    img_output[img_size[0]:, img_size[1]:, :] = img_2
+    draw_points(pts_1, img_output[:img_size[0], :img_size[1], :], iscolor=False)
+    draw_points(pts_2, img_output[:img_size[0], img_size[1]:, :], iscolor=False)
+    draw_points(pts_1, img_1, iscolor=False)
+    draw_points(pts_2, img_2, iscolor=False)
+
+    img_output[:img_size[0], :img_size[1], :] = img_1
+    img_output[:img_size[0], img_size[1]:, :] = img_2
+    return img_output.copy()
+

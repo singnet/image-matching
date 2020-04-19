@@ -1,4 +1,5 @@
 import torch
+import cv2
 import sklearn.neighbors
 import numpy as np
 import sklearn
@@ -275,7 +276,7 @@ def swap_rows(x):
     return y
 
 
-def interpolate(H, W, coarse_desc, samp_pts, normalize=True):
+def interpolate(H, W, coarse_desc, samp_pts, normalize=True, align_corners=True):
     """
 
     :param H: int
@@ -289,7 +290,7 @@ def interpolate(H, W, coarse_desc, samp_pts, normalize=True):
          with 0th dimension being width(e.g. x)
     :return:
     """
-    desc = grid_sample(H, W, coarse_desc, samp_pts)
+    desc = grid_sample(H, W, coarse_desc, samp_pts, align_corners=align_corners)
     # desc = F.grid_sample(coarse_desc, samp_pts)
     if normalize:
         desc_normal = F.normalize(desc, dim=1, p=2).squeeze()
@@ -299,7 +300,7 @@ def interpolate(H, W, coarse_desc, samp_pts, normalize=True):
     return desc
 
 
-def grid_sample(H, W, coarse_desc, samp_pts):
+def grid_sample(H, W, coarse_desc, samp_pts, align_corners=True):
     if numpy.prod(samp_pts.shape):
         assert samp_pts[0, :].max() < W
         assert samp_pts[1, :].max() < H
@@ -309,11 +310,11 @@ def grid_sample(H, W, coarse_desc, samp_pts):
     samp_pts = samp_pts.view(1, 1, -1, 2)
     samp_pts = samp_pts.float()
     samp_pts = samp_pts.to(coarse_desc.device)
-    desc = F.grid_sample(coarse_desc, samp_pts, align_corners=True)
+    desc = F.grid_sample(coarse_desc, samp_pts, align_corners=align_corners)
     return desc
 
 
-def descriptor_interpolate(desc, rows, cols, points, normalize=True):
+def descriptor_interpolate(desc, rows, cols, points, normalize=True, align_corners=True):
     """
     Interpolate descriptors for given points
 
@@ -333,8 +334,15 @@ def descriptor_interpolate(desc, rows, cols, points, normalize=True):
     else:
         p = torch.from_numpy(points.astype(numpy.float32).copy().transpose(1, 0))
     x_y_points = swap_rows(p)
-    tmp = interpolate(rows, cols, desc.unsqueeze(0), x_y_points, normalize=normalize)
+    tmp = interpolate(rows, cols, desc.unsqueeze(0), x_y_points, normalize=normalize, align_corners=align_corners)
     return tmp.transpose(1, 0)
+
+
+def calculate_h(pts_init, pts_pert):
+    H, _ = cv2.findHomography(pts_init, pts_pert)
+    H_inv, _ = cv2.findHomography(pts_pert, pts_init)
+    H = H.astype(numpy.float32)
+    return H, H_inv
 
 
 def desc_quality_no_transform(desc1_keypoints, desc2_keypoints, keypoints, keypoints2):
@@ -540,7 +548,19 @@ def project_points(H, point_mask, points):
     return in_bounds, points1projected
 
 
+def project_points2(H, point_mask, points, max_h, max_w):
+    pt1 = torch.cat([points, torch.ones([points.shape[0], 1]).to(points)], dim=1)
+    pt1_proj = (H.to(pt1) @ pt1.T).T
+    points1projected = pt1_proj[:, :2] / pt1_proj[:, -1].unsqueeze(1)
+    in_bounds = gen_in_bounds_mask(max_h, max_w, points1projected)
+    return in_bounds, points1projected
 
+
+def gen_in_bounds_mask(max_h, max_w, points1projected):
+    in_bounds = (
+            (points1projected[:, 0] < max_h) * (points1projected[:, 0] >= 0)
+            * (points1projected[:, 1] >= 0) * (points1projected[:, 1] < max_w))
+    return in_bounds
 
 
 def get_points_in_bounds(in_bounds, points, points1projected):
