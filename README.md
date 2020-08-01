@@ -1,7 +1,7 @@
 # neuro-fem
 
 This repository currently contains code of *GoodPoint: unsupervised learning of keypoint detection and description* https://arxiv.org/abs/2006.01030.
-And some unfinished models. Below some examples for keypoints extracted from hpatches dataset.
+And some unfinished models. Below some examples of keypoints extracted from hpatches dataset.
 
 ![i_ajuntament5.png](fem/examples/i_ajuntament5.ppm.png)
 ![i_indiana3.ppm.png](fem/examples/i_indiana3.ppm.png)
