@@ -257,18 +257,17 @@ def match_desc_reward(points1projected, points2, desc1_int,
     geom_dist, ind2 = util.geom_match(points1projected, points2)
     ind2 = ind2[:,0]
 
-    mean_geom = geom_dist[:, 1:].mean(axis=1)
-    mean_geom = mean_geom / 20
-
     geom_dist = geom_dist[:, 0]
     # mapping points1projected -> points2 with descriptors
     # fit(desc2)
     # query(desc1)
     num = 1
     if use_means:
-        num = 5
+        num = min(len(desc2), len(desc1_int))
+        assert num != 0
     dist, k2_desc = util.match_descriptors(desc2.cpu().detach(), desc1_int.cpu().detach(), num)
-
+    assert len(geom_dist) == len(dist)
+    assert len(geom_dist) == len(points1projected)
     k2_desc = k2_desc.squeeze()
     reward, sim_expected, similarity_desc, similarity_rand = desc_reward(desc1_int,
                                                                          desc2,
