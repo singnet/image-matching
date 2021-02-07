@@ -172,7 +172,7 @@ def train_maxpool_by_pairs(batch, model, **kwargs):
 
 
 def train_good():
-    batch_size = 90
+    batch_size = 22
     test_batch_size = 20
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -185,7 +185,7 @@ def train_good():
     if aggregate:
         batch_size = 1
 
-    super_file = "./super4300.pt"
+    super_file = "./super3400.pt"
 
     state_dict = torch.load(super_file, map_location=device)
     sp = GoodPoint(activation=torch.nn.LeakyReLU(), grid_size=8,
@@ -203,10 +203,10 @@ def train_good():
     decay_rate = 0.9
     decay_steps = 1000
 
+    sp.load_state_dict(state_dict['superpoint'], strict=True)
     if parallel:
         sp = torch.nn.DataParallel(sp)
 
-    sp.load_state_dict(state_dict['superpoint'], strict=True)
     def l(step, my_step=[3700 * 4]):
         my_step[0] += 1
         # if my_step[0] < 100:

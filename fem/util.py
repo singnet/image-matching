@@ -239,6 +239,7 @@ def match_descriptors(desc1_keypoints, desc2_keypoints, num=1):
                                                   metric='cosine')
     tree_cos.fit(desc1_keypoints)
     dist_cos, ind = tree_cos.kneighbors(desc2_keypoints, min(num, len(desc1_keypoints)))
+    assert len(dist_cos) == len(ind)
     return dist_cos, ind
 
 

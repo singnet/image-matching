@@ -28,33 +28,34 @@ weight = "./snapshots/super3400.pt"
 nms = MagicNMS(nms_dist=8)
 
 
-thresh = 0.015
 thresh = 0.0207122295525
+thresh = 0.015
 nn_thresh = 0.85
 
 
 
-#fe = SuperPointFrontend(weights_path=PATH_WEIGHTS,
-#                        nms_dist=8,
-#                        conf_thresh=thresh,
-#                        nn_thresh=nn_thresh,
-#                        cuda=True)
+fe = SuperPointFrontend(weights_path=PATH_WEIGHTS,
+                        nms_dist=8,
+                        conf_thresh=thresh,
+                        nn_thresh=nn_thresh,
+                        cuda=True)
 
 activation = torch.nn.LeakyReLU()
-
-sp = GoodPoint(dustbin=0,
-               activation=activation,
-               batchnorm=True,
-               grid_size=8,
-               nms=nms).eval().to(device)
-data = torch.load(weight, map_location=device)['superpoint']
 
 def strip_module(st):
     if 'module' in st:
         return st.split('module.')[1]
     return st
 
-sp.load_state_dict({strip_module(x): v for (x,v) in data.items()})
+
+
+#sp = GoodPoint(dustbin=0,
+#               activation=activation,
+#               batchnorm=True,
+#               grid_size=8,
+#               nms=nms).eval().to(device)
+#data = torch.load(weight, map_location=device)['superpoint']
+#sp.load_state_dict({strip_module(x): v for (x,v) in data.items()})
 
 
 #sp = SuperPoint(MagicNMS()).to(device).eval()
@@ -83,6 +84,7 @@ break_flag = False
 
 imwrite = False
 draw = False
+imwrite = True
 result_dir = './results/'
 
 
@@ -225,7 +227,7 @@ for d in range(len(ld)):
         c = 5
         #cv2.imshow('', img_output[IMG_SIZE_MAX[0]:, :, :])
         if imwrite:
-            cv2.imwrite(os.path.join(result_dir, ''.join(img_list[n].split('/')[-2:]) + '.png'), img_output[IMG_SIZE_MAX[0]:, :, :])
+            cv2.imwrite(os.path.join(result_dir, ''.join(img_list[n].split('/')[-2:]) + '.png'), img_output)
         if draw:
             cv2.imshow('matches', img_output)
             c = cv2.waitKey(100)

@@ -1,3 +1,5 @@
+import time
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from airsim_dataset import AirsimIntVarDataset
@@ -29,6 +31,7 @@ PATH_WEIGHTS = None
 
 PATH_WEIGHTS = "snapshots/super16000.pt"
 PATH_WEIGHTS = "./snapshots/super12300.pt"
+PATH_WEIGHTS = "./super6900.pt"
 
 
 #PATH_WEIGHTS = "./snapshots/TWD/tr_0.5_dr_0.4/from_scratch_super17.pt"
@@ -101,17 +104,76 @@ def test_distilled(loader):
 
 def run_good(loader, angle=0.0):
     weight = "./snapshots/super3400.pt"
+    weight = './snapshots/orbnet.d1.pt'
 
     sp = GoodPoint(dustbin=0,
                    activation=torch.nn.LeakyReLU(),
                    batchnorm=True,
                    grid_size=8,
                    nms=nms).eval()
+
+
+    #sp_desc = GoodPoint(dustbin=0,
+    #               activation=torch.nn.LeakyReLU(),
+    #               batchnorm=True,
+    #               grid_size=8,
+    #               nms=nms).eval().cuda()
+
+    #sp_desc.load_state_dict(torch.load('snapshots/super6300.pt', map_location=device)['superpoint'])
+
+    import pdb;pdb.set_trace()
     sp.load_state_dict(torch.load(weight, map_location=device)['superpoint'])
-    loop(sp=sp, loader=loader, draw=False, print_res=True, thresh=0.028075525,
-            desc_model=None, rotation_angle=angle)
+    loop(sp=sp, loader=loader, draw=False, print_res=False, thresh=0.021075525,
+            desc_model=None, rotation_angle=angle, N=None)
     print('test goodpoint {0} completed'.format(weight))
 
+
+def measure_performance(loader):
+    device = 'cpu'
+    weight = './snapshots/super3400.pt'
+    sp = GoodPoint(dustbin=0,
+                   activation=torch.nn.LeakyReLU(),
+                   batchnorm=True,
+                   grid_size=8,
+                   nms=nms).eval()
+    ipow = [i for i in range(11)]
+    ipow = [x * -1 for x in reversed(ipow)][:-1] + ipow
+    for t_pow in ipow:
+        weights = torch.load(weight, map_location=device)['superpoint']
+        for key, wt in list(weights.items()):
+            weights[key] = wt * (2 ** t_pow)
+        sp.load_state_dict(weights)
+        sp = sp.to(device)
+        perf = emtpy_loop(sp, loader, device, thresh=0.021075525)
+        print('pow {0} fps {1}'.format(t_pow, perf))
+
+
+def emtpy_loop(sp, loader, device, thresh):
+    total = 0.0
+    for i_batch, sample in enumerate(loader):
+        img_1_batch = sample['img1'].numpy()
+        img_2_batch = sample['img2'].numpy()
+        img_1 = img_1_batch[0, :, :]
+        img_2 = img_2_batch[0, :, :]
+        timg1 = np.expand_dims(np.expand_dims(img_1.astype('float32'), axis=0), axis=0)
+        timg2 = np.expand_dims(np.expand_dims(img_2.astype('float32'), axis=0), axis=0)
+        timg1 = torch.from_numpy(timg1).to(device)
+        timg2 = torch.from_numpy(timg2).to(device)
+
+        start = time.time()
+        with torch.no_grad():
+            pts_2, desc_2 = sp.points_desc(timg1, threshold=thresh)
+            pts_2, desc_2 = sp.points_desc(timg2, threshold=thresh)
+
+        end = time.time()
+        total += (end - start)
+
+        if i_batch == 100:
+            break
+
+
+    perf = ((i_batch + 1) * 2) / total
+    return perf
 
 
 dataset_village = AirsimIntVarDataset(**village, frame_offset=frame_offset)
@@ -141,15 +203,17 @@ batchnorm = True
 #                            nms_dist=8,conf_thresh=conf_thresh, nn_thresh=0.3)
 
 nms = MagicNMS()
-
+nms = PoolingNms(8)
 
 
 #run_all_snapshots()
 #test_distilled(fantasy_loader)
-test_magicleap1(village_loader, angle=0.0)
+#test_magicleap1(village_loader, angle=0.0)
 #test_magicleap(fantasy_loader, angle=5.0)
 
 # run_good(fantasy_loader, angle=0.0)
 #run_good(village_loader, angle=5.0)
 print('village_loader')
 # print('fantasy_loader')
+
+measure_performance(village_loader)
