@@ -114,7 +114,7 @@ def train_maxpool_by_pairs(batch, model, **kwargs):
         del _
         desc = desc.detach()
 
-    heatmaps, desc_back = model.semi_forward(imgs.unsqueeze(1) / 255.0)
+    heatmaps, desc_back = model(imgs.unsqueeze(1) / 255.0)
     if not desc_model:
         desc = desc_back
     else:
@@ -123,8 +123,9 @@ def train_maxpool_by_pairs(batch, model, **kwargs):
     keypoints_prob = model.expand_results(model.depth_to_space, heatmaps)
     point_mask32 = batch['points1']
     point_mask16 = batch['points2']
-    # drawing.show_points(batch['img1'][0].cpu().numpy() / 255.0, point_mask32[0].nonzero(), 'img1')
-    # drawing.show_points(batch['img2'][0].cpu().numpy() / 255.0, point_mask16[20].nonzero(), 'img2')
+    #import drawing
+    #drawing.show_points(batch['img1'][0].cpu().numpy() / 255.0, point_mask32[0].nonzero(), 'img1')
+    #drawing.show_points(batch['img2'][0].cpu().numpy() / 255.0, point_mask16[0].nonzero(), 'img2')
 
     desc1 = desc[:len(heatmaps) // 2]
     desc2 = desc[len(heatmaps) // 2:]
@@ -139,6 +140,9 @@ def train_maxpool_by_pairs(batch, model, **kwargs):
     _3d_data = batch
     tmp_results = defaultdict(list)
     for i in range(len(heatmap1)):
+        if len(point_mask1[i].nonzero()) < 3 or \
+                len(point_mask2[i].nonzero()) < 3:
+            continue
         tmp = compute_loss_hom_det(heatmap1[i], heatmap2[i].clone(),
                 {k: v[i] for (k,v) in _3d_data.items()},
                 point_mask1[i], point_mask2[i], desc1[i], desc2[i],
@@ -153,39 +157,35 @@ def train_maxpool_by_pairs(batch, model, **kwargs):
 
 
 def train_super():
-    batch_size = 20
+    batch_size = 24
     test_batch_size = 20
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print('using device {0}'.format(device))
     lr = 0.0005
-    epochs = 1
+    epochs = 7
     weight_decay = 0.005
     aggregate = False
     if aggregate:
         batch_size = 1
 
 
-    super_file = "./snapshots/super12300.pt"
+    super_file = "./super6000.pt"
 
 
     state_dict = torch.load(super_file, map_location=device)
-    sp = GoodPoint(activation=torch.nn.ReLU(), grid_size=8,
+    sp = GoodPoint(activation=torch.nn.LeakyReLU(), grid_size=8,
                batchnorm=True, dustbin=0).to(device)
 
     #desc_model = GoodPoint(activation=torch.nn.ReLU(), grid_size=8,
     #       batchnorm=True, dustbin=0).to(device)
 
-    print("loading weights from {0}".format(super_file))
+#    print("loading weights from {0}".format(super_file))
 
-#     sp.load_state_dict(state_dict['superpoint'], strict=True)
+    sp.load_state_dict(state_dict['superpoint'], strict=True)
     #desc_model.load_state_dict(state_dict['superpoint'], strict=True)
     print("loading optimizer")
-    optimizer = optim.RMSprop(sp.parameters(), lr=lr, weight_decay=weight_decay)
-    optimizer.load_state_dict(state_dict['optimizer'])
-    state_dict['optimizer']['param_groups'][0]['lr'] = lr
-    state_dict['optimizer']['param_groups'][0]['initial_lr'] = lr
-    state_dict['optimizer']['param_groups'][0]['weight_decay'] = weight_decay
+    optimizer = optim.AdamW(sp.parameters(), lr=lr, weight_decay=weight_decay)
 
     decay_rate = 0.9
     decay_steps = 1000
@@ -222,10 +222,12 @@ class NmsImgTransform:
 
     def __call__(self, sample):
         sample['points1'] = self.process(sample['points1'])
-        # import drawing
-        # pts = (torch.from_numpy(sample['points1']) > 0.2).nonzero()
-        # drawing.show_points(sample['img1'],pts, 'img1', 2)
         sample['points2'] = self.process(sample['points2'])
+        #import drawing
+        #pts = (torch.from_numpy(sample['points1']) > 0.2).nonzero()
+        #pts2 = (torch.from_numpy(sample['points2']) > 0.2).nonzero()
+        #drawing.show_points(sample['img1'], pts, 'img1', 2)
+        #drawing.show_points(sample['img1'], pts2, 'img1', 2)
         return sample
 
     def process(self, heatmap):
@@ -245,10 +247,10 @@ def get_loaders(batch_size, test_batch_size, num):
                                      transform=NmsImgTransform())
 
     coco_dataset = SynteticShapes(coco_super, Mode.training,
-                                  transform=NoisyORB(num, 950),
+                                  transform=NoisyORB(num, 1950),
                                   color=ColorMode.GREY)
     synth_dataset = SynteticShapes(synth_path, Mode.training,
-                                   transform=NoisyORB(num, 950),
+                                   transform=NoisyORB(num, 1950),
                                    color=ColorMode.GREY)
     coco_dataset.shuffle()
     train_loader = DataLoader(train_dataset,

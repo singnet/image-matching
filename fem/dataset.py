@@ -82,7 +82,7 @@ class SynteticShapes(data.Dataset):
         img = imageio.imread(path, pilmode=pilmode)
         if len(img.shape) == 2:
             img = img.reshape((*img.shape, 1))
-        return img
+        return numpy.asarray(img)
 
     def __getitem__(self, idx):
         x, y = self.points[idx]
@@ -130,6 +130,13 @@ class ImageDirectoryDataset(SynteticShapes):
     Class to load images from a single directory
     e.g. do not go into subdirectories
     """
+
+    def __init__(self, path, mode=Mode.training, transform=None,
+                 color=ColorMode.RGB, subset=None):
+        super().__init__(path, mode=mode, transform=transform,
+                 color=color, subset=subset)
+        if transform is None:
+            self.transform = lambda data: data
 
     def __getitem__(self, idx):
         x = self.points[idx]
