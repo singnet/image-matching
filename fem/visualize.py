@@ -23,7 +23,7 @@ def show_points(model, img, conf_thresh, name):
     pts_1, desc_1_ = model.points_desc(torch.from_numpy(timg1).to(next(model.parameters())), threshold=conf_thresh)
     print(len(pts_1))
     drawing.show_points(img, pts_1[:,:2].round().astype(numpy.int32), name, 2.0, save_path=name + '.png')
-
+    cv2.waitKey()
 
 
 cube = '/mnt/fileserver/shared/datasets/at-on-at-data/COCO/val2014/COCO_val2014_000000000073.jpg'
@@ -32,7 +32,7 @@ cube = '/home/noskill/COCO_val2014_000000032952.jpg'
 def show():
     device = 'cuda'
     sp_path = '/home/noskill/projects/neuro-fem/fem/superpoint_magicleap/superpoint_v1.pth'
-    gp_path = './snapshots/super12300.pt'
+    gp_path = './snapshots/super3400.pt'
     resize = Resize((282, 320))
     img = imageio.imread(cube, pilmode='L')
     cv2.imshow('img1', img)
@@ -40,12 +40,12 @@ def show():
 
     sp = SuperPoint(MagicNMS()).to(device)
     sp.load_state_dict(torch.load(sp_path))
-    show_points(sp, img, 0.059, 'super')
+    show_points(sp, img, 0.2369, 'super')
 
-    gp = GoodPoint(grid_size=8,
-                   nms=MagicNMS(), batchnorm=True).to(device).eval()
+    gp = GoodPoint(activation=torch.nn.LeakyReLU(), grid_size=8,
+               batchnorm=True, dustbin=0, nms=MagicNMS()).to(device).eval()
     gp.load_state_dict(torch.load(gp_path)['superpoint'])
-    show_points(gp, img, 0.035, 'good')
+    show_points(gp, img, 0.0552, 'good')
 
 
 show()
