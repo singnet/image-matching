@@ -293,6 +293,7 @@ def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=N
         rotate = True
     if N is None:
         N = len(loader)
+    print('Total {0} images'.format(N))
     c = 0
     for i_batch, sample in enumerate(loader):
         img_1_batch = sample['img1'].numpy()
@@ -301,6 +302,7 @@ def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=N
         depth_2_batch = sample['depth2'].numpy()
         H_batch = sample['H'].numpy()
         nCases += 1
+        print(i_batch)
         for j in range(1):
 
             img_1 = img_1_batch[j, :, :]
@@ -399,8 +401,8 @@ def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=N
             # desc_2 = desc_2_[0].detach().cpu()
             if draw:
                 from super_debug import draw_desc_interpolate
-                draw_desc_interpolate(img_1, img_2, pts_1, pts_2, desc_1, desc_2, 0)
-                draw_desc_interpolate(img_2, img_1, pts_2, pts_1, desc_2, desc_1, 1)
+                draw_desc_interpolate(img_1, img_2, pts_1, pts_2, desc_1.detach().cpu(), desc_2.detach().cpu(), 0)
+                draw_desc_interpolate(img_2, img_1, pts_2, pts_1, desc_2.detach().cpu(), desc_1.detach().cpu(), 1)
                 img_output = make_image_quad(img_1, img_2, pts_1, pts_2)
                 img_output2 = make_image_quad(img_2, img_1, pts_2, pts_1)
 
