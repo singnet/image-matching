@@ -272,7 +272,7 @@ def swap_rows(x):
     else:
         y = numpy.zeros_like(x)
     y[[1, 0]] = x
-    if numpy.prod(y.shape):
+    if torch.numel(y):
         assert y[0].max() == x[1].max()
     return y
 
@@ -302,11 +302,12 @@ def interpolate(H, W, coarse_desc, samp_pts, normalize=True, align_corners=True)
 
 
 def grid_sample(H, W, coarse_desc, samp_pts, align_corners=True):
-    if numpy.prod(samp_pts.shape):
+    if torch.numel(samp_pts):
         assert samp_pts[0, :].max() < W
         assert samp_pts[1, :].max() < H
-    samp_pts[0, :] = (samp_pts[0, :] / (float(W) / 2.)) - 1.
-    samp_pts[1, :] = (samp_pts[1, :] / (float(H) / 2.)) - 1.
+
+    samp_pts[0, :] = (samp_pts[0, :] / (W / 2.)) - 1.
+    samp_pts[1, :] = (samp_pts[1, :] / (H / 2.)) - 1.
     samp_pts = samp_pts.transpose(0, 1).contiguous()
     samp_pts = samp_pts.view(1, 1, -1, 2)
     samp_pts = samp_pts.float()

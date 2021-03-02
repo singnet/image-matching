@@ -184,7 +184,7 @@ class GoodPoint(nn.Module):
         rows, cols = x.shape[-2], x.shape[-1]
         coords_result = None
         for i, heatmap in enumerate(prob):
-            coords = (heatmap > threshold).nonzero()
+            coords = (heatmap > threshold).nonzero(as_tuple=False)
             coords = coords.cpu()
             prob_i = prob[i].cpu()
             heat = prob[i][coords[:, 0], coords[:, 1]]
@@ -216,4 +216,31 @@ class GoodPoint(nn.Module):
                                                            align_corners=self.align_corners))
         return coords_result, desc_result
 
+
+    def forward_torch_script(self, x, threshold):
+        """
+        simplified method for serialization
+        """
+        assert x.max() < 1.1
+        assert x.max() > 0.005
+        rows, cols = x.shape[-2], x.shape[-1]
+        x = self.vgg(x)
+        semi = self.detector_head(x)
+        desc = self.descriptor_head(x)
+        prob = torch.nn.functional.softmax(semi, dim=1)
+        prob = self.depth_to_space(prob)
+
+        prob = self.nms(prob).squeeze(0)
+
+        assert(len(prob) == 1)
+
+        heatmap = prob[0]
+        coords = (heatmap > threshold).nonzero(as_tuple=False)
+        prob_i = heatmap
+        heat = heatmap[coords[:, 0], coords[:, 1]]
+
+        with_idx = torch.hstack([coords,prob_i[coords[:,0], coords[:,1]].detach().unsqueeze(1)])
+        desc = util.descriptor_interpolate(desc[0], rows, cols,coords, align_corners=self.align_corners)
+
+        return with_idx, desc
 
