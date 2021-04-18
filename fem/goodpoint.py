@@ -217,12 +217,12 @@ class GoodPoint(nn.Module):
         return coords_result, desc_result
 
 
-    def forward_torch_script(self, x, threshold):
+    def orward(self, x, threshold):
         """
         simplified method for serialization
         """
-        assert x.max() < 1.1
-        assert x.max() > 0.005
+        #assert x.max() < 1.1
+        #assert x.max() > 0.005
         rows, cols = x.shape[-2], x.shape[-1]
         x = self.vgg(x)
         semi = self.detector_head(x)
@@ -232,7 +232,7 @@ class GoodPoint(nn.Module):
 
         prob = self.nms(prob).squeeze(0)
 
-        assert(len(prob) == 1)
+        #assert(len(prob) == 1)
 
         heatmap = prob[0]
         coords = (heatmap > threshold).nonzero(as_tuple=False)

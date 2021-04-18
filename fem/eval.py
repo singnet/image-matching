@@ -212,8 +212,8 @@ nms = PoolingNms(8)
 #test_magicleap(fantasy_loader, angle=5.0)
 
 # run_good(fantasy_loader, angle=0.0)
-#run_good(village_loader, angle=5.0)
+run_good(village_loader, angle=5.0)
 print('village_loader')
 # print('fantasy_loader')
 
-measure_performance(village_loader)
+#measure_performance(village_loader)

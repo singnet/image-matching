@@ -13,7 +13,7 @@ class DepthToSpace(nn.Module):
         output = input.permute(0, 2, 3, 1)
         (batch_size, d_height, d_width, d_depth) = output.size()
         s_depth = d_depth // self.block_size_sq
-        assert s_depth * self.block_size_sq == d_depth
+        #assert s_depth * self.block_size_sq == d_depth
         s_width = d_width * self.block_size
         s_height = d_height * self.block_size
         t_1 = output.reshape(batch_size, d_height, d_width, self.block_size_sq, s_depth)

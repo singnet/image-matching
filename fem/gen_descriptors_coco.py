@@ -24,6 +24,7 @@ def main():
                          batch_size=batch_size,
                          shuffle=True)
 
+    device = 'cpu'
     device = 'cuda'
     nms = PoolingNms(8)
     weight = "./snapshots/super3400.pt"
@@ -40,7 +41,10 @@ def main():
     for i, batch in enumerate(coco_loader):
         batch = batch.permute(0, 3, 1, 2)
         with torch.no_grad():
+            #import pdb;pdb.set_trace()
             pts_2, desc_2 = sp.points_desc(batch.to(device), threshold=thresh)
+            #module = torch.jit.trace(sp, (batch.to(device) / 255.0, torch.as_tensor(thresh)))
+            #torch.jit.save(module, 'goodpoint.cpu.pt')
             desc = desc_2[0]
             for row in desc:
                 line = ' '.join(str(x) for x in row.cpu().numpy())
@@ -49,5 +53,7 @@ def main():
             result_txt.write('\n'.encode('ascii'))
         if i % 100 == 0:
             print('iteration ', i)
+        if i and i % 50000 == 0:
+            break
 
 main()
