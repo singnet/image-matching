@@ -143,9 +143,9 @@ class GoodPoint(nn.Module):
         return result
 
     def forward_expand(self, x):
-        if x.max() > 1.1:
+        if x.float().max() > 1.1:
             x = x / 255.0
-        assert x.max() > 0.005
+        assert x.float().max() > 0.005
         x = self.vgg(x)
         semi = self.detector_head(x)
         desc = self.descriptor_head(x)
@@ -159,15 +159,15 @@ class GoodPoint(nn.Module):
             return expanded[:, 1]
         return expanded
 
-
-    def points_desc(self, x, threshold=0.5):
+    def points_desc(self, x, threshold=0.5, points_precomputed=None):
         """
         Method computes points and descriptors from torch.Tensor of images
         :param x: torch.Tensor
         :param threshold: float
+        :param points_precomputed: numpy.array
         :return:
         """
-        prob, desc = self.forward_expand(x.float())
+        prob, desc = self.forward_expand(x.to(self.conv1a.weight))
         if prob.shape[1] % 2 == 0:
             prob = prob[:, 1]
         else:
@@ -209,7 +209,10 @@ class GoodPoint(nn.Module):
             else:
                 coords_result = numpy.vstack([coords_result, with_idx]).astype(numpy.long)
 
-
+            if points_precomputed is not None:
+                coords = points_precomputed
+            # coords are in (y, x) format
+            # shape is n_points by 2
             desc_result.append(util.descriptor_interpolate(desc[0], rows,
                                                            cols,
                                                            coords,
@@ -217,7 +220,7 @@ class GoodPoint(nn.Module):
         return coords_result, desc_result
 
 
-    def orward(self, x, threshold):
+    def forward_serialize(self, x, threshold):
         """
         simplified method for serialization
         """
@@ -235,12 +238,14 @@ class GoodPoint(nn.Module):
         #assert(len(prob) == 1)
 
         heatmap = prob[0]
-        coords = (heatmap > threshold).nonzero(as_tuple=False)
+        coords = (heatmap > threshold).nonzero(as_tuple=False).to(prob.device)
+        rows = torch.as_tensor(rows).to(prob.device)
+        cols = torch.as_tensor(cols).to(prob.device)
         prob_i = heatmap
         heat = heatmap[coords[:, 0], coords[:, 1]]
 
         with_idx = torch.hstack([coords,prob_i[coords[:,0], coords[:,1]].detach().unsqueeze(1)])
-        desc = util.descriptor_interpolate(desc[0], rows, cols,coords, align_corners=self.align_corners)
+        desc = util.descriptor_interpolate(desc[0], rows, cols, coords, align_corners=self.align_corners)
 
         return with_idx, desc
 

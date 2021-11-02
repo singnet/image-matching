@@ -272,7 +272,7 @@ def swap_rows(x):
     else:
         y = numpy.zeros_like(x)
     y[[1, 0]] = x
-    if torch.numel(y):
+    if numpy.prod(y.shape):
         #assert y[0].max() == x[1].max()
         pass
     return y
@@ -330,8 +330,7 @@ def grid_sample(H, W, coarse_desc, samp_pts, align_corners=True):
     tmp = torch.stack([tmp0, tmp1])
     tmp = tmp.transpose(0, 1).contiguous()
     tmp = tmp.view(1, 1, -1, 2)
-    tmp = tmp.float()
-    tmp = tmp.to(coarse_desc.device)
+    tmp = tmp.to(coarse_desc)
     desc = F.grid_sample(coarse_desc, tmp, align_corners=align_corners)
     return desc
 
