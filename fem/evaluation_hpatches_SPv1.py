@@ -28,17 +28,17 @@ weight = "./snapshots/super3400.pt"
 nms = MagicNMS(nms_dist=8)
 
 
-thresh = 0.0207122295525
 thresh = 0.015
+thresh = 0.0207122295525
 nn_thresh = 0.85
 
 
 
-fe = SuperPointFrontend(weights_path=PATH_WEIGHTS,
-                        nms_dist=8,
-                        conf_thresh=thresh,
-                        nn_thresh=nn_thresh,
-                        cuda=True)
+#fe = SuperPointFrontend(weights_path=PATH_WEIGHTS,
+#                        nms_dist=8,
+#                        conf_thresh=thresh,
+#                        nn_thresh=nn_thresh,
+#                        cuda=True)
 
 activation = torch.nn.LeakyReLU()
 
@@ -49,17 +49,28 @@ def strip_module(st):
 
 
 
-#sp = GoodPoint(dustbin=0,
-#               activation=activation,
-#               batchnorm=True,
-#               grid_size=8,
-#               nms=nms).eval().to(device)
-#data = torch.load(weight, map_location=device)['superpoint']
-#sp.load_state_dict({strip_module(x): v for (x,v) in data.items()})
+# sp = GoodPoint(dustbin=0,
+#                activation=activation,
+#                batchnorm=True,
+#                grid_size=8,
+#                nms=nms).eval().to(device)
+# data = torch.load(weight, map_location=device)['superpoint']
+# sp.load_state_dict({strip_module(x): v for (x,v) in data.items()})
+
+
+weight = "./snapshots/distilled3400.pt"
+weight = "./snapshots/distilled17200.pt"
+from goodpoint_small import GoodPointSmall
+sp = GoodPointSmall(dustbin=0,
+               activation=torch.nn.LeakyReLU(),
+               batchnorm=True,
+               grid_size=8,
+               nms=nms,
+               base1=32).eval()
 
 
 #sp = SuperPoint(MagicNMS()).to(device).eval()
-#sp.load_state_dict(torch.load(PATH_WEIGHTS))
+sp.load_state_dict(torch.load(weight)['superpoint'])
 
 if fe is not None:
     sp = None
@@ -259,3 +270,4 @@ print('harmonic mean: {0}'.format(harmonic(meanLightReplication, meanViewReplica
                                            meanLightAccuracy, meanViewAccuracy,
                                            meanLightCoverage, meanViewCoverage)))
 print('threshold: {0}'.format(GOOD_MATCH_THRESHOLD))
+print('detection threshold {0}'.format(thresh))

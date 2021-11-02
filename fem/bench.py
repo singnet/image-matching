@@ -4,7 +4,7 @@ from fem import util
 import cv2
 
 
-def get_points_desc(fe, sp, device, img, thresh):
+def get_points_desc(fe, sp, device, img, thresh, points_precomputed=None):
     """
     Returns points in (x,y) format alongside with descriptors
     """
@@ -12,7 +12,8 @@ def get_points_desc(fe, sp, device, img, thresh):
         pts_2, desc_2, heatmap_2 = fe.run(img.astype('float32').squeeze() / 255.)
     else:
         with torch.no_grad():
-            pts_2, desc_2 = sp.to(device).points_desc(torch.from_numpy(img).to(device), threshold=thresh)
+            pts_2, desc_2 = sp.to(device).points_desc(torch.from_numpy(img).to(device), threshold=thresh,
+                    points_precomputed=points_precomputed)
         pts_2 = pts_2.T
         desc_2 = desc_2[0].T.cpu().detach().numpy()
         pts_2 = numpy.concatenate([util.swap_rows(pts_2[:2]), pts_2[2, :][numpy.newaxis, :]])

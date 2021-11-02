@@ -1,3 +1,4 @@
+#if __name__ == '__main__':
 from wrappers import cfem_wrapper as fm
 from wrappers import eval_airsim_wrapper as evw
 
@@ -353,7 +354,7 @@ def loop(sp, loader, draw=True, print_res=True, thresh=0.5, desc_model=None, N=N
             # pts_2, desc_2_ = fe.points_desc(torch.from_numpy(timg2).to(device), threshold=thresh)
 
             if rotate:
-    #            show_points(img_2.copy(), pts_2[:, 0:2].astype(np.int32), 'rot', scale=2)
+   #             show_points(img_2.copy(), pts_2[:, 0:2].astype(np.int32), 'rot', scale=2)
 
                 reproj = project(H_inv, pts_2)
                 hmax, wmax = img_1.shape
