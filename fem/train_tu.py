@@ -235,26 +235,6 @@ def train_good():
                 'superpoint': sp.state_dict()}, 'super{0}.pt'.format(scheduler.last_epoch))
 
 
-class NmsImgTransform:
-
-    def __call__(self, sample):
-        sample['points1'] = self.process(sample['points1'])
-        # import drawing
-        # pts = (torch.from_numpy(sample['points1']) > 0.2).nonzero()
-        # drawing.show_points(sample['img1'],pts, 'img1', 2)
-        sample['points2'] = self.process(sample['points2'])
-        return sample
-
-    def process(self, heatmap):
-        h, w = heatmap.shape
-        # target_nms = self.nms(torch.from_numpy(heatmap).unsqueeze(0).unsqueeze(0)).numpy().squeeze()
-        # assert target_nms.shape == (h, w)
-        # target_thres = self.target_threshold(target_nms).astype(numpy.float32)
-        # in case data doesn't have non-point layer
-        target = numpy.stack([1 - heatmap, heatmap])
-        return target
-
-
 def get_loaders(batch_size, test_batch_size, num):
     fire = '/mnt/fileserver/shared/datasets/fundus/FIRE/Images/'
     from fundus import FundusTransformWithResize

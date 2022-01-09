@@ -273,8 +273,7 @@ def swap_rows(x):
         y = numpy.zeros_like(x)
     y[[1, 0]] = x
     if numpy.prod(y.shape):
-        #assert y[0].max() == x[1].max()
-        pass
+        assert y[0].max() == x[1].max()
     return y
 
 
@@ -591,3 +590,11 @@ def get_points_in_bounds(in_bounds, points, points1projected):
         points = points.unsqueeze(0)
     return points, points1projected
 
+
+def remove_module(state_dict):
+    result = dict()
+    for k, v in state_dict.items():
+        if k.startswith('module'):
+            k = k.split('module.')[1]
+        result[k] = v
+    return result

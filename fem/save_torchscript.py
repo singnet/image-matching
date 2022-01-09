@@ -8,12 +8,12 @@ from airsim_dataset import AirsimIntVarDataset
 from fem.goodpoint import GoodPoint
 import os
 from fem.nonmaximum import MagicNMS
+from fem.util import remove_module
 from fem.nonmaximum import PoolingNms, MagicNMS
 from fem.dataset import SynteticShapes, Mode, ColorMode, ImageDirectoryDataset
 
 
 coco_super = '/mnt/fileserver/shared/datasets/SLAM_DATA/hpatches-dataset/COCO_super/train2014/images/training/'
-
 
 def main():
     coco_dataset = ImageDirectoryDataset(coco_super,
@@ -28,19 +28,22 @@ def main():
     device = 'cuda'
     nms = PoolingNms(8)
     weight = "./snapshots/super3400.pt"
-    pt_path = 'goodpoint.gpu.pt'
+    weight = './tu_model.pt'
+    weight = './super37630.pt'
+    pt_path = 'tu_model.gpu.pt'
     if device == 'cpu':
-        pt_path = 'goodpoint.cpu.pt'
+        pt_path = 'tu_model.cpu.pt'
+
+
     sp = GoodPoint(dustbin=0,
                    activation=torch.nn.LeakyReLU(),
                    batchnorm=True,
                    grid_size=8,
                    nms=nms).eval()
-    sp.load_state_dict(torch.load(weight, map_location=device)['superpoint'])
+    sp.load_state_dict(remove_module(torch.load(weight, map_location=device)['superpoint']))
     sp.to(device)
 
     thresh = 0.021
-    result_txt = gzip.open('desc.txt.gz', 'wb')
     for i, batch in enumerate(coco_loader):
         batch = batch.permute(0, 3, 1, 2)
         with torch.no_grad():
