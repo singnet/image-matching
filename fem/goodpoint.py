@@ -219,14 +219,13 @@ class GoodPoint(nn.Module):
                                                            align_corners=self.align_corners))
         return coords_result, desc_result
 
-
     def forward_serialize(self, x, threshold):
         """
         simplified method for serialization
         """
         #assert x.max() < 1.1
         #assert x.max() > 0.005
-        rows, cols = x.shape[-2], x.shape[-1]
+        rows, cols = get_size_script(x)
         x = self.vgg(x)
         semi = self.detector_head(x)
         desc = self.descriptor_head(x)
@@ -239,8 +238,6 @@ class GoodPoint(nn.Module):
 
         heatmap = prob[0]
         coords = (heatmap > threshold).nonzero(as_tuple=False).to(prob.device)
-        rows = torch.as_tensor(rows).to(prob.device)
-        cols = torch.as_tensor(cols).to(prob.device)
         prob_i = heatmap
         heat = heatmap[coords[:, 0], coords[:, 1]]
 
@@ -248,4 +245,11 @@ class GoodPoint(nn.Module):
         desc = util.descriptor_interpolate(desc[0], rows, cols, coords, align_corners=self.align_corners)
 
         return with_idx, desc
+
+@torch.jit.script
+def get_size_script(x):
+    rows, cols = x.shape[-2], x.shape[-1]
+    rows = torch.as_tensor(rows).to(x.device)
+    cols = torch.as_tensor(cols).to(x.device)
+    return rows, cols
 
