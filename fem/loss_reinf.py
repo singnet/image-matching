@@ -44,12 +44,17 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
     # map point to new image plane with H
     H = kwargs['H']
     point1_mask = kwargs['point1_mask']
-    points11 = kwargs['points1']
-    in_bounds, points1projected = util.project_points(H, point1_mask, points11)
-    points1, points1projected = util.get_points_in_bounds(in_bounds, points11, points1projected)
+    points1img1 = kwargs['points1']
+    # in_bounds is boolean mask of points1img1
+    in_bounds, points1img2 = util.project_points(H, point1_mask, points1img1)
+    # select subset of point1 that are in bounds
+    # when projected to img2, points1img2 is not modified
+    # just reshaped if lenght is 1
+    points1, points1img2 = util.get_points_in_bounds(in_bounds, points1img1, points1img2)
 
     # compute descriptors
     # use only points whose projections are in bounds
+    # use only points from img1 !!!!
     desc1 = kwargs['desc1']
     desc1_int = util.descriptor_interpolate(desc1, 256,
                                             256, points1)
@@ -57,20 +62,21 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
 
     result = dict()
     if not bool(in_bounds.sum()):
+        # no points in bounds, return some defaults
         reward, loss_desc, quality = torch.ones((1,)).to(desc1) * -0.1, None, torch.zeros((1,)).to(desc1)
     else:
         desc2 = kwargs['desc2']
         points2 = kwargs.get('points2', None)
         desc2_points2 = None
         if points2 is None:
-            points2 = points1projected
+            points2 = points1img2
         desc2_int = util.descriptor_interpolate(desc2, 256,
                                                  256, points2)
 
         img1 = kwargs.get('img1')
         img2 = kwargs.get('img2')
 
-        reward, loss_desc, quality, quality_desc, means = match_desc_reward(points1projected,
+        reward, loss_desc, quality, quality_desc, means = match_desc_reward(points1img2,
                                                            points2,
                                                            desc1_int, desc2_int,
                                                            img1=img1,
@@ -86,10 +92,10 @@ def loss_hom(average=[0.0], neg_reward=-0.5, **kwargs):
     if deb:
         import cv2
         cv2.imshow('img1', (img1.cpu() / 256).numpy())
-        cv2.waitKey(500)
+        cv2.waitKey(1000)
         import drawing
         drawing.show_points(img1.cpu() / 256, points1.cpu(), 'points1_img1', 2)
-        drawing.show_points(img2.cpu() / 256, points1projected.cpu(), 'points1_img2', 2)
+        drawing.show_points(img2.cpu() / 256, points1img2.cpu(), 'points1_img2', 2)
 
     result['quality'] = quality.squeeze()
     rew = reward.mean()
@@ -251,9 +257,19 @@ def match_desc_reward(points1projected, points2, desc1_int,
                       dist_thres=40,
                       img1=None, img2=None, points=None, use_means=False,
                       use_geom=True, geom_dist_average=[0.75], neg_reward=-0.5):
+    """
+    compute loss for descriptors
+
+    Parameters:
+    points2: torch.tensor
+        points in image2
+    points: torch.tensor
+        points in image1
+    points1projected:
+        points1 projected to image2
+    """
     if numpy.prod(points1projected.shape) == 0:
         return torch.ones((1,)).to(desc1_int) * -0.1, None
-
     geom_dist, ind2 = util.geom_match(points1projected, points2)
     ind2 = ind2[:,0]
 
@@ -288,10 +304,10 @@ def match_desc_reward(points1projected, points2, desc1_int,
     neq = (k2_desc != ind2)
     correct_idx = numpy.invert(neq * (geom_dist <= dist_thres))
     quality = torch.ones(1).to(desc1_int)
-    quality_desc = torch.ones(1).to(desc1_int)
+    quality_desc = torch.ones(1).to(desc1_int).squeeze()
     if bool(neq.sum()):
         # any non-matches are ok to optimize
-        wrong_id = (neq * (geom_dist >= 7)).nonzero()[0]
+        wrong_id = neq.nonzero()[0]
         # sim_wrong1 = similiarity_by_idx(desc1_int, desc2_int,
         #                    wrong_id.squeeze(),
         #                    k2_desc[wrong_id].squeeze())
@@ -312,10 +328,16 @@ def match_desc_reward(points1projected, points2, desc1_int,
             quality = torch.ones(1).squeeze() * quality
             # reward = reward + geom_reward
 
-    # import pdb;pdb.set_trace()
-    # matches = numpy.stack([numpy.arange(len(points1projected))[wrong_id], k2_desc[wrong_id]])
-    # matches = numpy.stack([numpy.arange(len(points1projected)), k2_desc, (k2_desc != ind2).squeeze()])
-    # draw_m(img1, img2, matches, points, points2)
+    #from super_debug import draw_m
+    #matches = numpy.stack([numpy.arange(len(points1projected))[wrong_id], k2_desc[wrong_id]])
+    #matches = numpy.stack([numpy.arange(len(points1projected)), k2_desc, (k2_desc != ind2).squeeze()])
+    #matches1 = numpy.stack([numpy.arange(len(points1projected)), ind2])
+    #draw_m(img1.cpu().numpy(), img2.cpu().numpy(), matches, points, points2)
+
+    #print((geom_dist < dist_thres).mean())
+    #draw_m(img1.cpu().numpy(), img2.cpu().numpy(),
+    #       numpy.concatenate([matches1, numpy.invert(geom_dist < dist_thres)[numpy.newaxis,:]], axis=0),
+    #       points1projected, points2, idx=1)
     # loss_desc, q = desc_quality_loss(geom_match, desc2_int, desc1_int, points2, points1projected)
     return reward, loss_desc, quality.to(desc1_int), \
            quality_desc.to(desc1_int), \

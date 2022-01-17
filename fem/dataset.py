@@ -8,7 +8,6 @@ from torch.utils import data
 import imageio
 import skimage.color
 import numpy
-import cv2
 
 
 class Mode(enum.Enum):
@@ -204,5 +203,6 @@ class MinecraftDataset(ImageDirectoryDataset):
             if img_name.startswith('seg'):
                 continue
             result.append(os.path.join(p, img_name))
+        result.sort()
         return result
 
