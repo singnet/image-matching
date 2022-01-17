@@ -125,6 +125,7 @@ def speckle(image, var=0.125):
 def additive_shade(image, nb_ellipses=20, transparency_range=[-0.6, 0.2],
                    kernel_size_range=[250, 350]):
 
+    assert len(image.shape) == 3
     def _py_additive_shade(img):
         dtype = img.dtype
         min_dim = min(img.shape[1:]) / 4

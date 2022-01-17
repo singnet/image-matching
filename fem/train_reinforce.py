@@ -178,14 +178,14 @@ def train_good():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print('using device {0}'.format(device))
     lr = 0.005
-    epochs = 3
+    epochs = 10
     weight_decay = 0.0005
     parallel = True
     aggregate = False
     if aggregate:
         batch_size = 1
 
-    super_file = "./super3400.pt"
+    super_file = "./snapshots/super3400.pt"
 
     state_dict = torch.load(super_file, map_location=device)
     sp = GoodPoint(activation=torch.nn.LeakyReLU(), grid_size=8,

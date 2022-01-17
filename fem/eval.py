@@ -102,9 +102,37 @@ def test_distilled(loader):
     print('test distilled completed')
 
 
+def run_distilled(loader, angle=0.0):
+    weight = "./snapshots/distilled3400.pt"
+    weight = "./distilled13800.pt"
+    from goodpoint_small import GoodPointSmall
+    sp = GoodPointSmall(dustbin=0,
+                   activation=torch.nn.LeakyReLU(),
+                   batchnorm=True,
+                   grid_size=8,
+                   nms=nms,
+                   base1=32, base2=32, base3=64).eval()
+
+
+    #sp_desc = GoodPoint(dustbin=0,
+    #               activation=torch.nn.LeakyReLU(),
+    #               batchnorm=True,
+    #               grid_size=8,
+    #               nms=nms).eval().cuda()
+
+    #sp_desc.load_state_dict(torch.load('snapshots/super6300.pt', map_location=device)['superpoint'])
+    sp.load_state_dict(torch.load(weight, map_location=device)['superpoint'])
+    # sp.to(torch.bfloat16)
+    # just in case
+    torch.set_flush_denormal(True)
+    loop(sp=sp, loader=loader, draw=False, print_res=False, thresh=0.0217075525,
+            device=device, desc_model=None, rotation_angle=angle, N=100)
+    print('test destilled {0} completed'.format(weight))
+
+
 def run_good(loader, angle=0.0):
-    weight = "./snapshots/super3400.pt"
     weight = './snapshots/orbnet.d1.pt'
+    weight = "./snapshots/super3400.pt"
 
     sp = GoodPoint(dustbin=0,
                    activation=torch.nn.LeakyReLU(),
@@ -121,10 +149,9 @@ def run_good(loader, angle=0.0):
 
     #sp_desc.load_state_dict(torch.load('snapshots/super6300.pt', map_location=device)['superpoint'])
 
-    import pdb;pdb.set_trace()
     sp.load_state_dict(torch.load(weight, map_location=device)['superpoint'])
     loop(sp=sp, loader=loader, draw=False, print_res=False, thresh=0.021075525,
-            desc_model=None, rotation_angle=angle, N=None)
+            desc_model=None, rotation_angle=angle, N=100)
     print('test goodpoint {0} completed'.format(weight))
 
 
@@ -184,36 +211,36 @@ village_loader = DataLoader(dataset_village, batch_size=batch_size, shuffle=Fals
 fantasy_loader = DataLoader(dataset_fantasy_village, batch_size=batch_size, shuffle=False, num_workers=1)
 
 
+if __name__ == '__main__':
+    if PATH_WEIGHTS == "snapshots/super.snap.4.pt":
+        conf_thresh = 0.15
 
-if PATH_WEIGHTS == "snapshots/super.snap.4.pt":
-    conf_thresh = 0.15
+    device = 'cpu'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-
-print("using device {0}".format(device))
+    print("using device {0}".format(device))
 
 
 
-batchnorm = True
-# from superpoint_magicleap.demo_superpoint import SuperPointFrontend
-# sp_magic = SuperPointFrontend(weights_path="superpoint_magicleap/superpoint_v1.pth",
-#                            nms_dist=8,conf_thresh=conf_thresh, nn_thresh=0.3)
+    batchnorm = True
+    # from superpoint_magicleap.demo_superpoint import SuperPointFrontend
+    # sp_magic = SuperPointFrontend(weights_path="superpoint_magicleap/superpoint_v1.pth",
+    #                            nms_dist=8,conf_thresh=conf_thresh, nn_thresh=0.3)
 
-nms = MagicNMS()
-nms = PoolingNms(8)
+    nms = MagicNMS()
+    nms = PoolingNms(8)
 
 
-#run_all_snapshots()
-#test_distilled(fantasy_loader)
-#test_magicleap1(village_loader, angle=0.0)
-#test_magicleap(fantasy_loader, angle=5.0)
+    #run_all_snapshots()
+    #test_distilled(fantasy_loader)
+    #test_magicleap1(village_loader, angle=0.0)
+    #test_magicleap(fantasy_loader, angle=5.0)
 
-# run_good(fantasy_loader, angle=0.0)
-#run_good(village_loader, angle=5.0)
-print('village_loader')
-# print('fantasy_loader')
+    # run_good(fantasy_loader, angle=0.0)
+    run_distilled(fantasy_loader, angle=5.0)
+    run_distilled(village_loader, angle=5.0)
+    # run_good(village_loader, angle=5.0)
+    print('village_loader')
+    # print('fantasy_loader')
 
-measure_performance(village_loader)
+    #measure_performance(village_loader)

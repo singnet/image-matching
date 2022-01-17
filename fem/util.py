@@ -301,17 +301,36 @@ def interpolate(H, W, coarse_desc, samp_pts, normalize=True, align_corners=True)
     return desc
 
 
-def grid_sample(H, W, coarse_desc, samp_pts, align_corners=True):
-    if numpy.prod(samp_pts.shape):
-        assert samp_pts[0, :].max() < W
-        assert samp_pts[1, :].max() < H
-    samp_pts[0, :] = (samp_pts[0, :] / (float(W) / 2.)) - 1.
-    samp_pts[1, :] = (samp_pts[1, :] / (float(H) / 2.)) - 1.
+def pts_normalize(coords, dim):
+    return (coords / (dim / 2)) - 1.
+
+
+def grid_sample_old(H, W, coarse_desc, samp_pts, align_corners=True):
+    if torch.numel(samp_pts):
+       assert samp_pts[0, :].max() < W
+       assert samp_pts[1, :].max() < H
+
+    samp_pts[0, :] = (samp_pts[0, :] / (W / 2.)) - 1.
+    samp_pts[1, :] = (samp_pts[1, :] / (H / 2.)) - 1.
     samp_pts = samp_pts.transpose(0, 1).contiguous()
     samp_pts = samp_pts.view(1, 1, -1, 2)
     samp_pts = samp_pts.float()
     samp_pts = samp_pts.to(coarse_desc.device)
     desc = F.grid_sample(coarse_desc, samp_pts, align_corners=align_corners)
+    return desc
+
+
+def grid_sample(H, W, coarse_desc, samp_pts, align_corners=True):
+    #if torch.numel(samp_pts):
+    #    assert samp_pts[0, :].max() < W
+    #    assert samp_pts[1, :].max() < H
+    tmp0 = pts_normalize(samp_pts[0, :], W)
+    tmp1 = pts_normalize(samp_pts[1, :], H)
+    tmp = torch.stack([tmp0, tmp1])
+    tmp = tmp.transpose(0, 1).contiguous()
+    tmp = tmp.view(1, 1, -1, 2)
+    tmp = tmp.to(coarse_desc)
+    desc = F.grid_sample(coarse_desc, tmp, align_corners=align_corners)
     return desc
 
 
@@ -571,3 +590,11 @@ def get_points_in_bounds(in_bounds, points, points1projected):
         points = points.unsqueeze(0)
     return points, points1projected
 
+
+def remove_module(state_dict):
+    result = dict()
+    for k, v in state_dict.items():
+        if k.startswith('module'):
+            k = k.split('module.')[1]
+        result[k] = v
+    return result

@@ -12,9 +12,10 @@ class DepthToSpace(nn.Module):
     def forward(self, input):
         output = input.permute(0, 2, 3, 1)
         (batch_size, d_height, d_width, d_depth) = output.size()
-        s_depth = int(d_depth / self.block_size_sq)
-        s_width = int(d_width * self.block_size)
-        s_height = int(d_height * self.block_size)
+        s_depth = d_depth // self.block_size_sq
+        #assert s_depth * self.block_size_sq == d_depth
+        s_width = d_width * self.block_size
+        s_height = d_height * self.block_size
         t_1 = output.reshape(batch_size, d_height, d_width, self.block_size_sq, s_depth)
         spl = t_1.split(self.block_size, 3)
         stack = [t_t.reshape(batch_size, d_height, s_width, s_depth) for t_t in spl]

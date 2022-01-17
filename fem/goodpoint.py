@@ -143,9 +143,9 @@ class GoodPoint(nn.Module):
         return result
 
     def forward_expand(self, x):
-        if x.max() > 1.1:
+        if x.float().max() > 1.1:
             x = x / 255.0
-        assert x.max() > 0.005
+        assert x.float().max() > 0.005
         x = self.vgg(x)
         semi = self.detector_head(x)
         desc = self.descriptor_head(x)
@@ -159,15 +159,15 @@ class GoodPoint(nn.Module):
             return expanded[:, 1]
         return expanded
 
-
-    def points_desc(self, x, threshold=0.5):
+    def points_desc(self, x, threshold=0.5, points_precomputed=None):
         """
         Method computes points and descriptors from torch.Tensor of images
         :param x: torch.Tensor
         :param threshold: float
+        :param points_precomputed: numpy.array
         :return:
         """
-        prob, desc = self.forward_expand(x.float())
+        prob, desc = self.forward_expand(x.to(self.conv1a.weight))
         if prob.shape[1] % 2 == 0:
             prob = prob[:, 1]
         else:
@@ -184,7 +184,7 @@ class GoodPoint(nn.Module):
         rows, cols = x.shape[-2], x.shape[-1]
         coords_result = None
         for i, heatmap in enumerate(prob):
-            coords = (heatmap > threshold).nonzero()
+            coords = (heatmap > threshold).nonzero(as_tuple=False)
             coords = coords.cpu()
             prob_i = prob[i].cpu()
             heat = prob[i][coords[:, 0], coords[:, 1]]
@@ -209,11 +209,47 @@ class GoodPoint(nn.Module):
             else:
                 coords_result = numpy.vstack([coords_result, with_idx]).astype(numpy.long)
 
-
+            if points_precomputed is not None:
+                coords = points_precomputed
+            # coords are in (y, x) format
+            # shape is n_points by 2
             desc_result.append(util.descriptor_interpolate(desc[0], rows,
                                                            cols,
                                                            coords,
                                                            align_corners=self.align_corners))
         return coords_result, desc_result
 
+    def forward_serialize(self, x, threshold):
+        """
+        simplified method for serialization
+        """
+        #assert x.max() < 1.1
+        #assert x.max() > 0.005
+        rows, cols = get_size_script(x)
+        x = self.vgg(x)
+        semi = self.detector_head(x)
+        desc = self.descriptor_head(x)
+        prob = torch.nn.functional.softmax(semi, dim=1)
+        prob = self.depth_to_space(prob)
+
+        prob = self.nms(prob).squeeze(0)
+
+        #assert(len(prob) == 1)
+
+        heatmap = prob[0]
+        coords = (heatmap > threshold).nonzero(as_tuple=False).to(prob.device)
+        prob_i = heatmap
+        heat = heatmap[coords[:, 0], coords[:, 1]]
+
+        with_idx = torch.hstack([coords,prob_i[coords[:,0], coords[:,1]].detach().unsqueeze(1)])
+        desc = util.descriptor_interpolate(desc[0], rows, cols, coords, align_corners=self.align_corners)
+
+        return with_idx, desc
+
+@torch.jit.script
+def get_size_script(x):
+    rows, cols = x.shape[-2], x.shape[-1]
+    rows = torch.as_tensor(rows).to(x.device)
+    cols = torch.as_tensor(cols).to(x.device)
+    return rows, cols
 

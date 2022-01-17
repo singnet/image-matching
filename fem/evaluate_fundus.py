@@ -177,5 +177,5 @@ if __name__ == '__main__':
 
     gp.load_state_dict(torch.load(weight, map_location=device)['superpoint'])
     super_thresh = 0.015
-    thresh = 0.0207190856295525`
+    thresh = 0.0207190856295525
     main(gp, thresh=thresh, draw=False, nn_thresh=0.8)

@@ -9,6 +9,7 @@ from fem.goodpoint import GoodPoint
 import os
 from fem.nonmaximum import MagicNMS
 from fem.nonmaximum import PoolingNms, MagicNMS
+from fem.util import remove_module
 from fem.dataset import SynteticShapes, Mode, ColorMode, ImageDirectoryDataset
 
 
@@ -24,15 +25,19 @@ def main():
                          batch_size=batch_size,
                          shuffle=True)
 
+    device = 'cpu'
     device = 'cuda'
     nms = PoolingNms(8)
-    weight = "./snapshots/super3400.pt"
+    weight = "./snapshots/super37630.pt"
+
     sp = GoodPoint(dustbin=0,
                    activation=torch.nn.LeakyReLU(),
                    batchnorm=True,
                    grid_size=8,
                    nms=nms).eval()
-    sp.load_state_dict(torch.load(weight, map_location=device)['superpoint'])
+    print('loading weights from ', weight)
+    w = torch.load(weight, map_location=device)['superpoint']
+    sp.load_state_dict(remove_module(w))
     sp.to(device)
 
     thresh = 0.021
@@ -49,5 +54,7 @@ def main():
             result_txt.write('\n'.encode('ascii'))
         if i % 100 == 0:
             print('iteration ', i)
+        if i and i % 50000 == 0:
+            break
 
 main()

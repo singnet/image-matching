@@ -7,6 +7,7 @@ import torch
 from torch.utils import data
 import imageio
 import numpy
+import cv2
 
 
 class Mode(enum.Enum):
@@ -79,7 +80,10 @@ class SynteticShapes(data.Dataset):
         pilmode = 'RGB'
         if self.color.value == ColorMode.GREY.value:
             pilmode = 'L'
-        img = imageio.imread(path, pilmode=pilmode)
+        if self.color.value == ColorMode.GREY.value:
+            img = cv2.imread(path, 0)
+        else:
+            img = cv2.imread(path, 1)
         if len(img.shape) == 2:
             img = img.reshape((*img.shape, 1))
         return numpy.asarray(img)
@@ -123,6 +127,28 @@ class SynteticShapes(data.Dataset):
         for top_dir in top_dirs:
             result.extend(self.load_items(top_dir))
         return result
+
+
+class Multidirectory(data.Dataset):
+    def __init__(self, paths, transform=None,
+                 color=ColorMode.RGB):
+        self.datasets = []
+        for path in paths:
+            self.datasets.append(ImageDirectoryDataset(path,
+                transform=transform, color=color))
+        self._len = sum(len(x) for x in self.datasets)
+
+    def __len__(self):
+        return self._len
+
+    def __getitem__(self, idx):
+        tmp = idx
+        for d in self.datasets:
+            ld = len(d)
+            if tmp < ld:
+                return d[tmp]
+            tmp -= ld
+        raise IndexError('out of bounds %i' % idx)
 
 
 class ImageDirectoryDataset(SynteticShapes):
