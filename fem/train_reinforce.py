@@ -6,6 +6,7 @@ from packaging import version
 
 import torch.optim as optim
 from fem.reinf_utils import threshold_nms, threshold_nms_dense
+from fem.util import mean
 from torch.utils.data import DataLoader
 
 from fem.dataset import SynteticShapes, Mode, ColorMode, ImageDirectoryDataset
@@ -115,11 +116,6 @@ def not_none(*args):
     return [x for x in args if x is not None]
 
 
-def mean(lst):
-    if len(lst) == 0:
-        return 0
-    return torch.mean(torch.stack(lst))
-
 
 def train_maxpool_by_pairs(batch, model, **kwargs):
     imgs = torch.cat([batch['img1'], batch['img2']]).float()
@@ -194,7 +190,7 @@ def train_good():
 
 
     print("loading weights from {0}".format(super_file))
-
+    sp.load_state_dict(state_dict['superpoint'], strict=True)
 
     print("loading optimizer")
     optimizer = optim.AdamW(sp.parameters(), lr=lr)
@@ -203,7 +199,6 @@ def train_good():
     decay_rate = 0.9
     decay_steps = 1000
 
-    sp.load_state_dict(state_dict['superpoint'], strict=True)
     if parallel:
         sp = torch.nn.DataParallel(sp)
 
@@ -214,7 +209,6 @@ def train_good():
         return exponential_lr(decay_rate, my_step[0], decay_steps, staircase=False)
 
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=l)
-
     test_loader, coco_loader, fundus_loader = get_loaders(batch_size, test_batch_size, 30 if aggregate else 1)
     test_engine = Engine(lambda eng, batch: test(eng, batch, sp, device, loss_function=test_callback))
     util.add_metrics(test_engine, average=True)
