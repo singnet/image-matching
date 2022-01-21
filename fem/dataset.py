@@ -6,8 +6,8 @@ from operator import itemgetter
 import torch
 from torch.utils import data
 import imageio
-import skimage.color
 import numpy
+import cv2
 
 
 class Mode(enum.Enum):
@@ -81,13 +81,9 @@ class SynteticShapes(data.Dataset):
         if self.color.value == ColorMode.GREY.value:
             pilmode = 'L'
         if self.color.value == ColorMode.GREY.value:
-            img = imageio.imread(path)
-            # make sure it's rgb
-            if len(img.shape) == 3:
-                assert img.shape[2] == 3
-                img = skimage.color.rgb2gray(img)
+            img = cv2.imread(path, 0)
         else:
-            img = imageio.imread(path)
+            img = cv2.imread(path, 1)
         if len(img.shape) == 2:
             img = img.reshape((*img.shape, 1))
         return numpy.asarray(img)
@@ -193,16 +189,3 @@ class ImageSelfLearnDataset(ImageDirectoryDataset):
         images = torch.stack([torch.from_numpy(x.astype(numpy.float32)) for x in transformed[0]])
         H = torch.stack([torch.from_numpy(x) for x in transformed[1]])
         return images, H
-
-
-class MinecraftDataset(ImageDirectoryDataset):
-    def _load_dataset(self, subset=None):
-        result = []
-        p = self.path
-        for img_name in os.listdir(p):
-            if img_name.startswith('seg'):
-                continue
-            result.append(os.path.join(p, img_name))
-        result.sort()
-        return result
-

@@ -1,7 +1,6 @@
 import cv2
 import numpy
 import sklearn.neighbors
-from fem import util
 
 
 def draw_desc_interpolate(img_source, img_h, keypoints, keypoints2,
@@ -42,12 +41,3 @@ def draw_matches(idx, img_pair, matches, pts1, pts2, skip_matches=False):
     cv2.imshow(str(idx), img5)
     cv2.resizeWindow(str(idx), img5.shape[1] * 2, img5.shape[0] * 2)
     cv2.waitKey(1000)
-
-
-def draw_m(img1, img2, matches, points, points2, idx=0):
-    img_pair = numpy.hstack([img1, img2]).astype(numpy.uint8)
-    if len(img_pair.shape) == 2 or img_pair.shape[2] == 1:
-        img_pair = numpy.stack([img_pair, img_pair, img_pair], axis=2).squeeze()
-    draw_matches(idx, img_pair, matches, util.swap_rows(points.cpu().numpy().T),
-                 util.swap_rows(points2.cpu().numpy().T))
-

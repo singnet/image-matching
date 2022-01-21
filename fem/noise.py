@@ -235,10 +235,7 @@ def resize(img, size):
     if len(img.shape) == 3 and numpy.argmin(img.shape) == 0:
         img = img.transpose(1, 2, 0)
     if len(img.shape) == 3 and img.shape[2] != 1:
-        img = cv2.resize(img, size)
-        if numpy.argmin(img.shape) == 2:
-            img = numpy.moveaxis(cv2.resize(img, size), (0, 1, 2), (1, 2, 0))
-            return img
+        return cv2.resize(img, size)
     return cv2.resize(img, size)[numpy.newaxis, :]
 
 
