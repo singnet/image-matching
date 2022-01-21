@@ -598,19 +598,3 @@ def remove_module(state_dict):
             k = k.split('module.')[1]
         result[k] = v
     return result
-
-
-def mean(lst):
-    if len(lst) == 0:
-        return 0
-    return torch.mean(torch.stack(lst))
-
-
-def iterative_mean(prev_mean, t, observation):
-    """
-    Iterative mean
-
-    see https://www.heikohoffmann.de/htmlthesis/node134.html
-    """
-    return prev_mean + (1  / (t + 1)) * (observation - prev_mean)
-

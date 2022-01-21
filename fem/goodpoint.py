@@ -9,8 +9,7 @@ from fem.depth import DepthToSpace
 
 class GoodPoint(nn.Module):
     def __init__(self, grid_size, n_channels=1, activation=nn.ReLU(),
-                 batchnorm=True, dustbin=0, nms=None, align_corners=True,
-                 desc_out=256):
+                 batchnorm=True, dustbin=0, nms=None, align_corners=True):
         super().__init__()
         self.align_corners = align_corners
         self.dustbin = dustbin
@@ -47,7 +46,7 @@ class GoodPoint(nn.Module):
         self.convPb = torch.nn.Conv2d(256, 64 + dustbin, kernel_size=1, stride=1, padding=0)
         # Descriptor
         self.convDa = torch.nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
-        self.convDb = torch.nn.Conv2d(256, desc_out, kernel_size=1, stride=1, padding=0)
+        self.convDb = torch.nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0)
         if batchnorm:
             self.batchnorm0 = nn.BatchNorm2d(64)
             self.batchnorm1 = nn.BatchNorm2d(64)
