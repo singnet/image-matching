@@ -1,4 +1,5 @@
 import sys
+from collections import defaultdict
 import torch
 
 from torchvision.transforms import Compose
@@ -251,3 +252,17 @@ def form_result(desc_loss, det_loss, hom_target, keypoints_homography, loss, pre
     result['det_target'] = hom_target.cpu().detach().numpy()[:, 1]
     result['det_prob'] = keypoints_homography.cpu().detach().numpy()[:, 1]
     return result
+
+
+class Stats:
+    def __init__(self, max_t=100):
+        self.stats = defaultdict(float)
+        self.counter = defaultdict(int)
+        self.max_t = max_t
+
+    def update(self, **kwargs):
+        for key, value in kwargs.items():
+            prev_mean = self.stats[key]
+            t = self.counter[key]
+            self.stats[key] = util.iterative_mean(prev_mean, t, value)
+            self.counter[key] = min(self.counter[key] + 1, self.max_t)

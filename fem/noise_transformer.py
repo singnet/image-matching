@@ -18,19 +18,29 @@ def to_torch(kwargs):
 
 
 class NoisyTransformWithResize(TransformCompose):
-    def __init__(self, num=1):
+    def __init__(self,
+            num=1,
+            beta=14,
+            theta=0.8,
+            random_scale_range=(0.8, 1.3),
+            perspective=85,
+            noisy=None):
         from fem import noise
-        from fem.training import make_noisy_transformers
-        self.noisy = make_noisy_transformers()
+        self.noisy = noisy
+        if noisy is None:
+            # keep old noise as default
+            # there is code depending on it
+            from fem.training import make_noisy_transformers
+            self.noisy = make_noisy_transformers()
 
         self.imgcrop = noise.RandomCropTransform(size=256, beta=0)
         self.resize = noise.Resize((256, 256))
         self.to_tensor = ToTensor()
-        self.homography = HomographySamplerTransformer(num=1,
-                                                  beta=14,
-                                                  theta=0.8,
-                                                  random_scale_range=(0.8, 1.3),
-                                                  perspective=85)
+        self.homography = HomographySamplerTransformer(num=num,
+                                                  beta=beta,
+                                                  theta=theta,
+                                                  random_scale_range=random_scale_range,
+                                                  perspective=perspective)
         self.num = num
 
     def __call__(self, data=None, target=None):
@@ -51,6 +61,8 @@ class NoisyTransformWithResize(TransformCompose):
         return self.sample_with_source_homography(x)
 
     def sample_with_source_homography(self, x):
+        assert x.shape[0] < x.shape[1]
+        assert x.shape[0] < x.shape[2]
         # x is batch 1, h, w
         self.homography.sample_fixed_homography(h=x.shape[-2], w=x.shape[-1])
         # apply noise to source image before sample
@@ -83,7 +95,9 @@ class NoisyTransformWithResize(TransformCompose):
         # cv2.imshow('2 -> 1', res21 / 256.)
         # cv2.waitKey(100)
         return dict(img1=template1[1].squeeze(), img2=template2[1].squeeze(),
-                    H=H12, H_inv=H12_inv, mask2=mask2, mask1=mask1)
+                    H=H12, H_inv=H12_inv, H1=H1, H2=H2,
+                    H1_inv=H1_inv, H2_inv=H2_inv,
+                    mask2=mask2, mask1=mask1)
 
     def sample_no_source_homography(self, x):
         # x is batch 1, h, w
