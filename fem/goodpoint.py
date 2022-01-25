@@ -10,10 +10,11 @@ from fem.depth import DepthToSpace
 class GoodPoint(nn.Module):
     def __init__(self, grid_size, n_channels=1, activation=nn.ReLU(),
                  batchnorm=True, dustbin=0, nms=None, align_corners=True,
-                 desc_out=256):
+                 desc_out=256, norm_descriptors=True):
         super().__init__()
         self.align_corners = align_corners
         self.dustbin = dustbin
+        self.norm_desc = norm_descriptors
         self.activation = activation
         stride = 1
         kernel = (3, 3)
@@ -86,8 +87,9 @@ class GoodPoint(nn.Module):
     def descriptor_head(self, x):
         x = self.batchnormDa(self.activation(self.convDa(x)))
         desc = self.convDb(x)
-        dn = torch.norm(desc, p=2, dim=1)  # Compute the norm.
-        desc = desc.div(torch.unsqueeze(dn, 1))  # Divide by norm to normalize.
+        if self.norm_desc:
+            dn = torch.norm(desc, p=2, dim=1)  # Compute the norm.
+            desc = desc.div(torch.unsqueeze(dn, 1))  # Divide by norm to normalize.
         return desc
 
     def superblock(self, x, conv1, conv2, batch1, batch2, skip=False):
@@ -246,6 +248,22 @@ class GoodPoint(nn.Module):
         desc = util.descriptor_interpolate(desc[0], rows, cols, coords, align_corners=self.align_corners)
 
         return with_idx, desc
+
+    def get_descriptors(self, img, points):
+        if len(img.shape) == 3:
+            idx = numpy.argmin(img.shape)
+            assert img.shape[idx] == 3
+            if idx == 2:
+                img = numpy.moveaxis(img, (0, 1, 2), (1, 2, 0))
+            img = img[numpy.newaxis, ...]
+        w = next(self.parameters())
+        _, desc = self(torch.as_tensor(img).to(w) / 255.0)
+        rows, cols = img.shape[-2], img.shape[-1]
+        desc1 = util.descriptor_interpolate(desc[0], rows, cols,  torch.as_tensor(points))
+        return desc1
+
+
+
 
 @torch.jit.script
 def get_size_script(x):

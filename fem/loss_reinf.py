@@ -318,7 +318,6 @@ def match_desc_reward(points1projected, points2, desc1_int,
             quality_desc = correct_idx.sum() / len(ind2)
             quality_desc = torch.ones(1).squeeze() * quality_desc
         if use_geom:
-            # geom_reward = (torch.from_numpy(mean_geom).to(desc1_int) - geom_dist_average[0])
             geom_rew = sigmoid_abs(geom_dist)
             geom_rew = geom_rew * (geom_rew > 0)
             sim_dist = torch.from_numpy(geom_rew).to(reward).squeeze()
@@ -326,19 +325,18 @@ def match_desc_reward(points1projected, points2, desc1_int,
             quality = (geom_dist < dist_thres).sum() / numpy.prod(geom_dist.shape)
             reward = reward * (reward >= 0) * quality + reward * (reward < 0)
             quality = torch.ones(1).squeeze() * quality
-            # reward = reward + geom_reward
+    debug = False
+    if debug:
+        from super_debug import draw_m
+        matches = numpy.stack([numpy.arange(len(points1projected))[wrong_id], k2_desc[wrong_id]])
+        matches = numpy.stack([numpy.arange(len(points1projected)), k2_desc, (k2_desc != ind2).squeeze()])
+        matches1 = numpy.stack([numpy.arange(len(points1projected)), ind2])
+        draw_m(img1.cpu().numpy(), img2.cpu().numpy(), matches, points, points2)
 
-    #from super_debug import draw_m
-    #matches = numpy.stack([numpy.arange(len(points1projected))[wrong_id], k2_desc[wrong_id]])
-    #matches = numpy.stack([numpy.arange(len(points1projected)), k2_desc, (k2_desc != ind2).squeeze()])
-    #matches1 = numpy.stack([numpy.arange(len(points1projected)), ind2])
-    #draw_m(img1.cpu().numpy(), img2.cpu().numpy(), matches, points, points2)
-
-    #print((geom_dist < dist_thres).mean())
-    #draw_m(img1.cpu().numpy(), img2.cpu().numpy(),
-    #       numpy.concatenate([matches1, numpy.invert(geom_dist < dist_thres)[numpy.newaxis,:]], axis=0),
-    #       points1projected, points2, idx=1)
-    # loss_desc, q = desc_quality_loss(geom_match, desc2_int, desc1_int, points2, points1projected)
+        print((geom_dist < dist_thres).mean())
+        draw_m(img1.cpu().numpy(), img2.cpu().numpy(),
+               numpy.concatenate([matches1, numpy.invert(geom_dist < dist_thres)[numpy.newaxis,:]], axis=0),
+               points1projected, points2, idx=1)
     return reward, loss_desc, quality.to(desc1_int), \
            quality_desc.to(desc1_int), \
            ((points1projected + points2[ind2]) / 2.0).round()[correct_idx.nonzero()]
