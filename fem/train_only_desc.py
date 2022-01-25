@@ -74,12 +74,10 @@ def train_iteration(batch, model, optimizer, scheduler, **kwargs):
 
     desc1 = desc[:len(desc) // 2]
     desc2 = desc[len(desc) // 2:]
-    point_mask32 = torch.zeros_like(heatmaps[:len(desc)// 2])
-    point_mask16 = torch.zeros_like(heatmaps[:len(desc)// 2])
-    point_mask32 = model.expand_results(model.depth_to_space, point_mask32)
-    point_mask16 = model.expand_results(model.depth_to_space, point_mask16)
-    point_mask1 = torch.zeros([len(desc)// 2, 1, desc.shape[1] * desc.shape[2], desc.shape[1] * desc.shape[3]]).to(desc.device)
-    point_mask2 = torch.zeros([len(desc)// 2, 1, desc.shape[1] * desc.shape[2], desc.shape[1] * desc.shape[3]]).to(desc.device)
+    point_mask1 = torch.zeros_like(heatmaps[:len(desc)// 2])
+    point_mask2 = torch.zeros_like(heatmaps[:len(desc)// 2])
+    point_mask1 = model.expand_results(model.depth_to_space, point_mask1)
+    point_mask2 = model.expand_results(model.depth_to_space, point_mask2)
     coords16 = torch.meshgrid(torch.arange(16, 256, 32), torch.arange(16, 256, 32), indexing='ij')
     coords32 = torch.meshgrid(torch.arange(8, 256, 16), torch.arange(8, 256, 16), indexing='ij')
     # permute coords a bit
@@ -101,7 +99,7 @@ def train_iteration(batch, model, optimizer, scheduler, **kwargs):
     for i in range(len(desc1)):
         tmp = compute_loss_desc({k: v[i] for (k,v) in _3d_data.items()},
                 point_mask1[i], point_mask2[i],
-                desc1[i], desc2[i])
+                desc1[i], desc2[i], kwargs['norm_descriptors'])
         for key, value in tmp.items():
             tmp_results[key].append(value)
     result = {key: mean(value) for (key, value) in tmp_results.items()}
@@ -117,12 +115,12 @@ def train_iteration(batch, model, optimizer, scheduler, **kwargs):
 def train_good():
     batch_size = 22
     test_batch_size = 20
-
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print('using device {0}'.format(device))
     lr = 0.0015
     epochs = 50
     weight_decay = 0.0005
+    norm_descriptors = True
     parallel = False
     stats = Stats()
 
@@ -133,28 +131,22 @@ def train_good():
                grid_size=8,
                batchnorm=False,
                dustbin=0,
-               desc_out=8).to(device)
+               desc_out=8,
+               norm_descriptors=norm_descriptors).to(device)
     optimizer = optim.AdamW(gp.parameters(), lr=lr)
     if os.path.exists(super_file):
         state_dict = torch.load(super_file, map_location=device)
         print("loading weights from {0}".format(super_file))
         gp.load_state_dict(state_dict['superpoint'])
 
-        #print("loading optimizer")
-        #optimizer.load_state_dict(state_dict['optimizer'])
-
     decay_rate = 0.9
     decay_steps = 1000
 
-    #sp.load_state_dict(state_dict['superpoint'], strict=True)
-    #optimizer.load_state_dict(state_dict['optimizer'])
     if parallel:
         gp = torch.nn.DataParallel(gp)
 
     def l(step, my_step=[0]):
         my_step[0] += 1
-        # if my_step[0] < 100:
-        #     return my_step[0] / 100
         return exponential_lr(decay_rate, my_step[0], decay_steps, staircase=False)
 
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=l)
@@ -164,7 +156,8 @@ def train_good():
     for epoch in range(epochs + 1):
         for i, batch in enumerate(m_loader):
             batch = {k: v.to(device) for (k, v) in batch.items()}
-            result = train_iteration(batch, gp, optimizer, scheduler)
+            result = train_iteration(batch, gp, optimizer, scheduler,
+                    norm_descriptors=norm_descriptors)
             stats.update(**result)
             if i % 15 == 0:
                 print(stats.stats)
@@ -183,7 +176,7 @@ def get_loaders(batch_size, test_batch_size, num):
 
     m_loader = DataLoader(m_dataset,
                              batch_size=batch_size,
-                             shuffle=False)
+                             shuffle=True)
     return m_loader
 
 
