@@ -10,3 +10,4 @@ distilled_32_32_64.pt - distilled model with 1/4 of filters for all except first
 
 
 super37630.pt - retrained with rotation +- 0.8 rad
+mine8.pt - trained on minecraft images with descriptor length 8
