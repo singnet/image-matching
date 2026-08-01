@@ -224,19 +224,25 @@ def add_moving_average(engine, name, decay=0.99):
                              callback)
 
 
-def match_descriptors(desc1_keypoints, desc2_keypoints, num=1):
+def match_descriptors(desc1_keypoints, desc2_keypoints, num=1, metric='cosine'):
     """
     Match descriptors
+    returns indices of matches of desc2_keypoints
 
-    :param desc1_keypoints: numpy.array
+    Parameters:
+    ----------
+    desc1_keypoints: numpy.array
         N * descriptor length
-    :param desc2_keypoints: numpy.array
+    desc2_keypoints: numpy.array
         N * descriptor length
-    :return: indices of matches of desc2_keypoints in desc1_keypoints
+    num: int
+        number of neighbours
+    metric: str
+        distance metric to use
     """
     tree_cos = sklearn.neighbors.NearestNeighbors(n_neighbors=num,
                                                   leaf_size=10,
-                                                  metric='cosine')
+                                                  metric=metric)
     tree_cos.fit(desc1_keypoints)
     dist_cos, ind = tree_cos.kneighbors(desc2_keypoints, min(num, len(desc1_keypoints)))
     assert len(dist_cos) == len(ind)
@@ -291,12 +297,11 @@ def interpolate(H, W, coarse_desc, samp_pts, normalize=True, align_corners=True)
          with 0th dimension being width(e.g. x)
     :return:
     """
-    desc = grid_sample(H, W, coarse_desc, samp_pts, align_corners=align_corners)
-    # desc = F.grid_sample(coarse_desc, samp_pts)
+    desc = grid_sample(H, W, coarse_desc, samp_pts, align_corners=align_corners).squeeze()
+    if len(desc.shape) == 1:
+       desc = desc.unsqueeze(1)
     if normalize:
-        desc_normal = F.normalize(desc, dim=1, p=2).squeeze()
-        if len(desc_normal.shape) == 1:
-            desc_normal = desc_normal.unsqueeze(1)
+        desc_normal = F.normalize(desc, dim=0, p=2)
         desc = desc_normal
     return desc
 
@@ -345,6 +350,7 @@ def descriptor_interpolate(desc, rows, cols, points, normalize=True, align_corne
         (points, row-and-column)
     :return:
     """
+    assert len(desc.shape) == 3
     if len(points.shape) == 1:
         points = points.unsqueeze(0)
     # else:
